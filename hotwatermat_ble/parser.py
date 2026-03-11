@@ -1,111 +1,80 @@
-"""Parse notify packets from the hot water mat."""
+"""Parse BLE notify packets from the hot water mat.
+
+STATUS packet arrives on CHAR1 (~1/sec while connected).
+Temperature encoding uses 0.5C precision:
+  Values <= 127 are direct degrees (e.g. 33 = 33.0C)
+  Values > 127 are half-degree (e.g. 161 = 33.5C, decoded as val - 127.5)
+"""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field as dc_field
 from .protocol import (
-    DIR_MAT_TO_APP, MODE_HEAT, MODE_TIMER_OFF, MODE_SLEEP,
-    MODE_POWER_OFF, MODE_FASTHEAT, MODE_IONCARE, PACKET_SIZE, STX,
+    DIR_MAT_TO_APP, MODE_POWER, STX, PACKET_SIZE, decode_temp,
 )
 
 MODE_NAMES = {
-    MODE_HEAT: "HEAT",
-    MODE_TIMER_OFF: "TIMER_OFF",
-    MODE_SLEEP: "SLEEP",
-    MODE_POWER_OFF: "POWER_OFF",
-    MODE_FASTHEAT: "FASTHEAT",
-    MODE_IONCARE: "IONCARE",
-}
-
-RIGHT_STATE_NAMES = {
-    0x02: "HEAT",
-    0x03: "STANDBY",
-    0xFE: "OFF",
-}
-
-WATER_LEVEL_NAMES = {
-    1: "LOW",
-    2: "OK",
-    3: "FULL",
+    0x01: "HEAT", 0x02: "TIMER_OFF", 0x03: "SLEEP",
+    0x06: "POWER", 0x07: "FASTHEAT", 0x08: "IONCARE",
 }
 
 
 @dataclass
 class MatStatus:
     mode: int
-    mode_name: str
     side: int
-    volume: int
-    water_level: int
-    water_level_name: str
-    right_state: int
-    right_state_name: str
-    left_set_temp: int
-    right_set_temp: int
-    left_cur_temp: int
-    right_cur_temp: int
-    left_heating: bool
-    right_heating: bool
-    fastheat_on: bool
-    raw: bytes
+    left_current: float    # decoded temperature (0.5C precision)
+    right_current: float
+    left_target: float
+    right_target: float
+    left_current_raw: int  # raw byte from packet (needed for building commands)
+    right_current_raw: int
+    volume: int            # 0=mute, 1-3
+    water_level: int       # 1=low, 2=ok, 3=full
+    raw: bytes = dc_field(repr=False)
+
+    @property
+    def mode_name(self) -> str:
+        return MODE_NAMES.get(self.mode, f"0x{self.mode:02X}")
+
+    @property
+    def is_on(self) -> bool:
+        """True if mat is powered on."""
+        return not (self.mode == MODE_POWER and
+                    self.left_target == 0 and self.right_target == 0)
 
     def __str__(self) -> str:
-        lines = [
-            f"Mode:         {self.mode_name}",
-            f"Side:         {'both' if self.side == 0x06 else 'left'}",
-            f"Volume:       {self.volume}",
-            f"Water level:  {self.water_level_name}",
-            f"Right state:  {self.right_state_name}",
-            f"Left  temp:   {self.left_cur_temp}°C → {self.left_set_temp}°C {'(heating)' if self.left_heating else ''}",
-            f"Right temp:   {self.right_cur_temp}°C → {self.right_set_temp}°C {'(heating)' if self.right_heating else ''}",
-        ]
-        if self.mode == MODE_FASTHEAT:
-            lines.append(f"Fast heat:    {'ON' if self.fastheat_on else 'OFF'}")
-        return "\n".join(lines)
+        power = "ON" if self.is_on else "OFF"
+        water = ["", "💧low", "💧ok", "💧full"]
+        wl = water[self.water_level] if self.water_level < len(water) else ""
+        return (
+            f"Power:{power}  Mode:{self.mode_name}  "
+            f"L:{self.left_current}°C→{self.left_target}°C  "
+            f"R:{self.right_current}°C→{self.right_target}°C  "
+            f"Vol:{self.volume} {wl}"
+        )
 
 
-def parse_notify(data: bytes) -> MatStatus | None:
-    """Parse a 20-byte notify packet from the mat. Returns None if invalid."""
+def parse_status(data: bytes) -> MatStatus | None:
+    """Parse a STATUS notify packet. Returns None if not a valid status."""
     if len(data) < PACKET_SIZE:
         return None
-    if data[0] != STX:
+    if data[0] != STX or data[1] != DIR_MAT_TO_APP:
         return None
-    if data[1] != DIR_MAT_TO_APP:
-        return None
-
-    mode = data[2]
-    side = data[3]
-    vol = (data[4] >> 4) & 0x0F
-    wlv = data[4] & 0x0F
-    right_state = data[5]
-    left_set = data[7]
-    right_set = data[8]
-
-    left_cur_raw = data[10]
-    right_cur_raw = data[11]
-    left_heating = bool(left_cur_raw & 0x80)
-    right_heating = bool(right_cur_raw & 0x80)
-    left_cur = left_cur_raw & 0x7F
-    right_cur = right_cur_raw & 0x7F
-
-    fastheat_on = (mode == MODE_FASTHEAT and data[12] == 0x01)
-
     return MatStatus(
-        mode=mode,
-        mode_name=MODE_NAMES.get(mode, f"UNKNOWN(0x{mode:02X})"),
-        side=side,
-        volume=vol,
-        water_level=wlv,
-        water_level_name=WATER_LEVEL_NAMES.get(wlv, f"UNKNOWN({wlv})"),
-        right_state=right_state,
-        right_state_name=RIGHT_STATE_NAMES.get(right_state, f"UNKNOWN(0x{right_state:02X})"),
-        left_set_temp=left_set,
-        right_set_temp=right_set,
-        left_cur_temp=left_cur,
-        right_cur_temp=right_cur,
-        left_heating=left_heating,
-        right_heating=right_heating,
-        fastheat_on=fastheat_on,
+        mode=data[2],
+        side=data[3],
+        left_current=decode_temp(data[7]),
+        right_current=decode_temp(data[8]),
+        left_target=decode_temp(data[10]),
+        right_target=decode_temp(data[11]),
+        left_current_raw=data[7],
+        right_current_raw=data[8],
+        volume=(data[4] >> 4) & 0x0F,
+        water_level=data[4] & 0x0F,
         raw=bytes(data),
     )
+
+
+# Back-compat alias
+def parse_notify(data: bytes) -> MatStatus | None:
+    return parse_status(data)

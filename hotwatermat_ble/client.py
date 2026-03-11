@@ -1,14 +1,16 @@
 """BLE client for communicating with the hot water mat using bleak.
 
-Connection method (confirmed working on macOS):
-  1. Open the vendor app on the phone and connect the mat.
-  2. Run get_status() or send_command() — bleak uses UUID cache to connect
-     even while the phone is the primary BLE connection.
-  3. Swipe-close (not force-stop) the phone app.
-  4. The mat briefly continues sending notify packets to all subscribed centrals.
+Connection sequence (verified working on macOS):
+  1. BLE connect
+  2. Subscribe to CHAR1 (STATUS) and CHAR2 (B2F1 auth)
+  3. Wait ~300ms
+  4. Write HANDSHAKE to CHAR2 (with response)
+  5. Receive B2F1 type=0x02 on CHAR2 -> authenticated
+  6. STATUS packets stream on CHAR1 (~1/sec)
+  7. Send commands to CHAR2
+  8. Disconnect when done (short-lived connections are normal)
 
-Note: write commands work only when Mac is the sole/primary connection.
-      Status reading works while the phone is also connected.
+All writes go to CHAR2. CHAR1 is STATUS receive only.
 """
 
 from __future__ import annotations
@@ -19,17 +21,18 @@ import logging
 from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 
-from .parser import MatStatus, parse_notify
+from .parser import MatStatus, parse_status
 from .protocol import (
-    CHAR_UUID, CHAR2_UUID, DEFAULT_ADDRESS,
+    CHAR1_UUID, CHAR2_UUID, DEFAULT_ADDRESS,
     HANDSHAKE, PACKET_SIZE, SERVICE_UUID,
 )
 
 logger = logging.getLogger(__name__)
 
-_CONNECT_TIMEOUT = 30.0   # long: allows waiting while phone disconnects
-_STATUS_TIMEOUT  = 8.0
-_WRITE_TIMEOUT   = 5.0
+_CONNECT_TIMEOUT = 30.0
+_AUTH_TIMEOUT = 5.0
+_STATUS_TIMEOUT = 8.0
+_CMD_TIMEOUT = 5.0
 
 
 async def scan(timeout: float = 10.0) -> list[BLEDevice]:
@@ -41,116 +44,132 @@ async def scan(timeout: float = 10.0) -> list[BLEDevice]:
     return list(devices)
 
 
-def _get_chars(client: BleakClient):
-    """Return (char1, char2) characteristic objects."""
-    char1 = char2 = None
-    for svc in client.services:
-        for ch in svc.characteristics:
-            if ch.uuid == CHAR_UUID:
-                char1 = ch
-            elif ch.uuid == CHAR2_UUID:
-                char2 = ch
-    return char1, char2
+async def _connect_and_auth(
+    address: str,
+    timeout: float = _CONNECT_TIMEOUT,
+) -> tuple[BleakClient, asyncio.Event, list[MatStatus]]:
+    """Connect, subscribe, handshake, and wait for B2F1 auth.
 
-
-async def get_status(address: str = DEFAULT_ADDRESS,
-                     timeout: float = _CONNECT_TIMEOUT) -> MatStatus:
-    """Connect and return the first valid status packet from the mat.
-
-    Requires the phone app to be connected (or recently disconnected).
-    Uses UUID cache to connect without advertising.
+    Returns (client, auth_event, status_list).
+    status_list is a mutable list that accumulates incoming STATUS packets.
     """
-    status: MatStatus | None = None
-    event = asyncio.Event()
+    auth_event = asyncio.Event()
+    statuses: list[MatStatus] = []
 
-    def on_notify(_sender, data: bytearray) -> None:
-        nonlocal status
-        parsed = parse_notify(bytes(data))
-        if parsed is not None and status is None:
-            status = parsed
-            event.set()
+    def on_char1_notify(_sender, data: bytearray) -> None:
+        """STATUS packets arrive on CHAR1."""
+        parsed = parse_status(bytes(data))
+        if parsed is not None:
+            statuses.append(parsed)
+            logger.debug("STATUS: %s", parsed)
+
+    def on_char2_notify(_sender, data: bytearray) -> None:
+        """B2F1 auth response arrives on CHAR2."""
+        if len(data) >= 3 and data[0] == 0xB2 and data[1] == 0xF1:
+            auth_type = data[2]
+            logger.debug("B2F1 auth type=0x%02X", auth_type)
+            if auth_type == 0x02:
+                auth_event.set()
 
     client = BleakClient(address, timeout=timeout)
     await client.connect()
-    logger.debug("Connected to mat")
+    logger.debug("Connected to %s", address)
 
-    char1, char2 = _get_chars(client)
-    if char1 is None:
-        await client.disconnect()
-        raise RuntimeError(f"Characteristic {CHAR_UUID} not found")
+    # Subscribe to both characteristics
+    await client.start_notify(CHAR1_UUID, on_char1_notify)
+    await client.start_notify(CHAR2_UUID, on_char2_notify)
 
-    await client.start_notify(char1, on_notify)
-    if char2:
-        await client.start_notify(char2, on_notify)
+    # Wait for subscriptions to settle
+    await asyncio.sleep(0.3)
 
-    # Send handshake to activate notification stream
-    await client.write_gatt_char(char1, bytearray(HANDSHAKE), response=True)
-    logger.debug("Handshake sent")
+    # Send handshake to CHAR2
+    await client.write_gatt_char(CHAR2_UUID, bytearray(HANDSHAKE), response=True)
+    logger.debug("Handshake sent to CHAR2")
 
+    # Wait for B2F1 auth
     try:
-        await asyncio.wait_for(event.wait(), timeout=_STATUS_TIMEOUT)
+        await asyncio.wait_for(auth_event.wait(), timeout=_AUTH_TIMEOUT)
+        logger.debug("Authenticated (B2F1 type=02)")
     except asyncio.TimeoutError:
         await client.disconnect()
-        raise TimeoutError("No status notify received from mat") from None
+        raise TimeoutError("B2F1 auth response not received") from None
 
-    await client.disconnect()
-    assert status is not None
-    return status
+    return client, auth_event, statuses
 
 
-async def send_command(address: str = DEFAULT_ADDRESS,
-                       *packets: bytearray,
-                       timeout: float = _CONNECT_TIMEOUT,
-                       wait_status: bool = True) -> MatStatus | None:
-    """Connect as primary device and send command packet(s).
+async def get_status(
+    address: str = DEFAULT_ADDRESS,
+    timeout: float = _CONNECT_TIMEOUT,
+) -> MatStatus:
+    """Connect, authenticate, and return the first STATUS packet."""
+    client, _, statuses = await _connect_and_auth(address, timeout)
 
-    NOTE: Commands are only accepted when Mac is the sole BLE connection.
-    Before calling, ensure the phone app is disconnected from the mat.
+    # May already have status from during auth
+    if statuses:
+        await client.disconnect()
+        return statuses[-1]
 
-    Returns the first MatStatus received after sending, or None.
-    """
-    status: MatStatus | None = None
+    # Wait for first STATUS
     event = asyncio.Event()
+    orig_len = len(statuses)
 
-    def on_notify(_sender, data: bytearray) -> None:
-        nonlocal status
-        parsed = parse_notify(bytes(data))
-        if parsed is not None and status is None:
-            status = parsed
+    def _check():
+        if len(statuses) > orig_len:
             event.set()
 
-    client = BleakClient(address, timeout=timeout)
-    await client.connect()
-    logger.debug("Connected to mat (primary mode)")
+    # Poll briefly
+    try:
+        for _ in range(int(_STATUS_TIMEOUT * 10)):
+            if len(statuses) > orig_len:
+                break
+            await asyncio.sleep(0.1)
+    except asyncio.CancelledError:
+        pass
 
-    char1, char2 = _get_chars(client)
-    if char1 is None:
-        await client.disconnect()
-        raise RuntimeError(f"Characteristic {CHAR_UUID} not found")
+    await client.disconnect()
 
+    if statuses:
+        return statuses[-1]
+    raise TimeoutError("No STATUS packet received from mat")
+
+
+async def send_command(
+    address: str = DEFAULT_ADDRESS,
+    *packets: bytes,
+    timeout: float = _CONNECT_TIMEOUT,
+    wait_status: bool = True,
+) -> MatStatus | None:
+    """Connect, authenticate, send command(s), and optionally wait for STATUS.
+
+    Returns the latest MatStatus after sending, or None.
+    """
+    client, _, statuses = await _connect_and_auth(address, timeout)
+
+    # Wait for at least one STATUS before sending commands
     if wait_status:
-        await client.start_notify(char1, on_notify)
-        if char2:
-            await client.start_notify(char2, on_notify)
+        for _ in range(int(_STATUS_TIMEOUT * 10)):
+            if statuses:
+                break
+            await asyncio.sleep(0.1)
 
-    await client.write_gatt_char(char1, bytearray(HANDSHAKE), response=True)
-    logger.debug("Handshake sent")
-
-    # Wait briefly for auth (B2F1) then send commands
-    await asyncio.sleep(0.5)
-
+    # Send command packets to CHAR2
     for pkt in packets:
         if len(pkt) != PACKET_SIZE:
             raise ValueError(f"Packet must be {PACKET_SIZE} bytes, got {len(pkt)}")
-        await client.write_gatt_char(char1, pkt, response=True)
-        logger.debug("Command sent: %s", pkt.hex())
+        await client.write_gatt_char(CHAR2_UUID, bytearray(pkt), response=True)
+        logger.debug("Command sent to CHAR2: %s", pkt.hex())
         await asyncio.sleep(0.1)
 
+    # Wait for updated STATUS
+    result = None
     if wait_status:
-        try:
-            await asyncio.wait_for(event.wait(), timeout=_WRITE_TIMEOUT)
-        except asyncio.TimeoutError:
-            pass  # status may not arrive for power-off
+        pre_count = len(statuses)
+        for _ in range(int(_CMD_TIMEOUT * 10)):
+            if len(statuses) > pre_count:
+                break
+            await asyncio.sleep(0.1)
+        if statuses:
+            result = statuses[-1]
 
     await client.disconnect()
-    return status
+    return result

@@ -9,9 +9,29 @@ import click
 
 from .client import get_status, scan, send_command
 from .protocol import (
-    DEFAULT_ADDRESS, SIDE_BOTH, TEMP_MAX, TEMP_MIN,
-    build_fastheat, build_heat, build_power_off, build_power_on, build_standby,
+    DEFAULT_ADDRESS, SIDE_BOTH, SIDE_LEFT, SIDE_RIGHT,
+    TEMP_MAX, TEMP_MIN,
+    build_heat, build_power_off, build_power_on,
 )
+
+
+class FloatTempType(click.ParamType):
+    """Custom type for 0.5C step temperatures."""
+    name = "TEMP"
+
+    def convert(self, value, param, ctx):
+        try:
+            v = float(value)
+        except (ValueError, TypeError):
+            self.fail(f"{value!r} is not a valid temperature", param, ctx)
+        if v < TEMP_MIN or v > TEMP_MAX:
+            self.fail(f"Temperature must be {TEMP_MIN}-{TEMP_MAX}°C", param, ctx)
+        if (v * 2) != int(v * 2):
+            self.fail("Temperature must be in 0.5°C steps", param, ctx)
+        return v
+
+
+TEMP_TYPE = FloatTempType()
 
 
 @click.group()
@@ -22,11 +42,15 @@ from .protocol import (
     show_default=True,
     help="BLE address of the mat (or set HOTWATERMAT_ADDRESS env var).",
 )
+@click.option("--debug", is_flag=True, help="Enable debug logging.")
 @click.pass_context
-def cli(ctx: click.Context, address: str) -> None:
-    """Control a BLE hot water mat (KDO_HotWaterMat / EQM555)."""
+def cli(ctx: click.Context, address: str, debug: bool) -> None:
+    """Control a BLE hot water mat (KDO_HotWaterMat)."""
     ctx.ensure_object(dict)
     ctx.obj["address"] = address
+    if debug:
+        import logging
+        logging.basicConfig(level=logging.DEBUG)
 
 
 @cli.command("scan")
@@ -45,7 +69,7 @@ def scan_cmd(timeout: float) -> None:
 @cli.command()
 @click.pass_context
 def status(ctx: click.Context) -> None:
-    """Connect and show current mat status."""
+    """Show current mat status."""
     address = ctx.obj["address"]
     click.echo(f"Connecting to {address}...")
     try:
@@ -60,68 +84,120 @@ def status(ctx: click.Context) -> None:
     click.echo(f"\nRaw: {st.raw.hex(' ')}")
 
 
-@cli.command("set-temp")
-@click.option("--left", "-l", type=click.IntRange(TEMP_MIN, TEMP_MAX),
-              required=True, help=f"Left temp ({TEMP_MIN}-{TEMP_MAX}°C).")
-@click.option("--right", "-r", type=click.IntRange(TEMP_MIN, TEMP_MAX),
-              required=True, help=f"Right temp ({TEMP_MIN}-{TEMP_MAX}°C).")
+@cli.command("temp")
+@click.option("--left", "-l", type=TEMP_TYPE,
+              help=f"Left side temp ({TEMP_MIN}-{TEMP_MAX}°C, 0.5 steps).")
+@click.option("--right", "-r", type=TEMP_TYPE,
+              help=f"Right side temp ({TEMP_MIN}-{TEMP_MAX}°C, 0.5 steps).")
 @click.pass_context
-def set_temp(ctx: click.Context, left: int, right: int) -> None:
-    """Set left and right temperatures."""
+def set_temp(ctx: click.Context, left: float | None, right: float | None) -> None:
+    """Set target temperature for left/right sides.
+
+    At least one of --left or --right must be specified.
+    Unspecified side keeps its current temperature.
+    """
+    if left is None and right is None:
+        click.echo("Error: specify at least one of --left or --right", err=True)
+        sys.exit(1)
+
     address = ctx.obj["address"]
-    pkt = build_heat(left, right, SIDE_BOTH)
-    click.echo(f"Setting temp: left={left}°C, right={right}°C")
-    st = asyncio.run(send_command(address, pkt))
-    if st:
-        click.echo(str(st))
+    click.echo(f"Connecting to {address}...")
+
+    # Get current status first (need raw bytes for command)
+    try:
+        st = asyncio.run(get_status(address))
+    except Exception as e:
+        click.echo(f"Error getting status: {e}", err=True)
+        sys.exit(1)
+
+    left_tgt = left if left is not None else st.left_target
+    right_tgt = right if right is not None else st.right_target
+
+    # Determine side
+    if left is not None and right is not None:
+        side = SIDE_BOTH
+    elif left is not None:
+        side = SIDE_LEFT
     else:
-        click.echo("Command sent (no status received).")
+        side = SIDE_RIGHT
+
+    pkt = build_heat(
+        left_cur=st.left_current_raw,
+        right_cur=st.right_current_raw,
+        left_tgt=left_tgt,
+        right_tgt=right_tgt,
+        side=side,
+    )
+
+    parts = []
+    if left is not None:
+        parts.append(f"L={left}°C")
+    if right is not None:
+        parts.append(f"R={right}°C")
+    click.echo(f"Setting temp: {', '.join(parts)}")
+
+    try:
+        result = asyncio.run(send_command(address, pkt))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    if result:
+        click.echo(str(result))
+    else:
+        click.echo("Command sent (no status confirmation).")
 
 
-@cli.command()
-@click.argument("state", type=click.Choice(["on", "off"]))
+@cli.command("on")
 @click.pass_context
-def power(ctx: click.Context, state: str) -> None:
-    """Turn power on or off."""
+def power_on(ctx: click.Context) -> None:
+    """Turn mat power on."""
     address = ctx.obj["address"]
-    if state == "on":
-        pkt = build_power_on()
-        click.echo("Powering on...")
-        st = asyncio.run(send_command(address, pkt))
+    click.echo(f"Connecting to {address}...")
+
+    try:
+        st = asyncio.run(get_status(address))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    pkt = build_power_on(st.left_current_raw, st.right_current_raw)
+    click.echo("Powering on...")
+    try:
+        result = asyncio.run(send_command(address, pkt))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    if result:
+        click.echo(str(result))
     else:
-        pkts = build_power_off()
-        click.echo("Powering off...")
-        st = asyncio.run(send_command(address, *pkts, wait_status=False))
-    if st:
-        click.echo(str(st))
-    else:
-        click.echo("Command sent.")
+        click.echo("Power on command sent.")
 
 
-@cli.command()
-@click.argument("state", type=click.Choice(["on", "off"]))
+@cli.command("off")
 @click.pass_context
-def fastheat(ctx: click.Context, state: str) -> None:
-    """Turn fast heat on or off."""
-    address = ctx.obj["address"]
-    pkt = build_fastheat(on=(state == "on"))
-    click.echo(f"Fast heat {state}...")
-    st = asyncio.run(send_command(address, pkt))
-    if st:
-        click.echo(str(st))
-    else:
-        click.echo("Command sent.")
+def power_off(ctx: click.Context) -> None:
+    """Turn mat power off.
 
-
-@cli.command()
-@click.pass_context
-def standby(ctx: click.Context) -> None:
-    """Set mat to standby (sleep) mode."""
+    WARNING: After power off, the mat stops BLE advertising.
+    Physical button required to turn back on.
+    """
     address = ctx.obj["address"]
-    pkt = build_standby()
-    click.echo("Setting standby mode...")
-    st = asyncio.run(send_command(address, pkt))
-    if st:
-        click.echo(str(st))
-    else:
-        click.echo("Command sent.")
+    click.echo(f"Connecting to {address}...")
+
+    try:
+        st = asyncio.run(get_status(address))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    pkt = build_power_off(st.left_current_raw, st.right_current_raw)
+    click.echo("⚠️  Powering off (BLE will be unavailable until physical restart)...")
+    try:
+        result = asyncio.run(send_command(address, pkt, wait_status=False))
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    click.echo("Power off command sent.")

@@ -9,9 +9,14 @@ DIR_APP_TO_MAT = 0x80
 DIR_MAT_TO_APP = 0x00
 
 SERVICE_UUID = "00001c0d-d102-11e1-9b23-2ce2a80000dd"
-CHAR_UUID = "00001c0d-d102-11e1-9b23-2ce2a80100dd"
+CHAR_UUID  = "00001c0d-d102-11e1-9b23-2ce2a80100dd"   # write + notify (main)
+CHAR2_UUID = "00001c0d-d102-11e1-9b23-2ce2a80200dd"   # notify (secondary)
 
 DEFAULT_ADDRESS = "FD319CFA-2E62-116D-D348-5B9FEEE95D2F"
+
+# Handshake packet sent once right after CCCD subscribe.
+# Fixed value confirmed from logcat captures (always identical).
+HANDSHAKE = bytes.fromhex("B2014F5FC610B169FEFEFEFEFEFEFEFEFEFEFE89")
 
 # Mode byte values (byte[2])
 MODE_HEAT = 0x01
@@ -66,8 +71,8 @@ def _base_packet(mode: int, side: int, right_state: int,
     pkt[7] = left_temp
     pkt[8] = right_temp
     pkt[9] = FIXED_BYTE9
-    pkt[10] = PAD
-    pkt[11] = PAD
+    pkt[10] = left_temp  # confirmed from captures: matches set temp
+    pkt[11] = right_temp
     pkt[12] = sub
     for i in range(13, 19):
         pkt[i] = PAD

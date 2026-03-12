@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**hotwatermat-ble** is an open-source BLE controller for KDO_HotWaterMat (EQM555) hot water mats.
+**hotwatermat-ble** is an open-source BLE controller for a heated mattress pad (KDO_HotWaterMat / EQM555). It communicates directly over BLE, replacing the proprietary app with open-source tooling.
 The project provides a CLI, MCP server, and npm/WASM package — all built on a shared Go protocol library.
 
 ## Architecture

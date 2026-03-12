@@ -1,0 +1,31 @@
+{
+  "name": "hotwatermat-ble-core",
+  "version": "0.1.0",
+  "description": "BLE protocol library for KDO_HotWaterMat (hot water mat) — WASM-powered packet builder/parser",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/hotwatermat.wasm"
+  ],
+  "scripts": {
+    "build:wasm": "../wasm/build.sh",
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ble",
+    "bluetooth",
+    "hot-water-mat",
+    "iot",
+    "wasm"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minjun0219/hotwatermat-ble"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

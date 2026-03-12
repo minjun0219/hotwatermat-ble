@@ -218,8 +218,6 @@ type Status struct {
 	RightCurrent   float64
 	LeftTarget     float64
 	RightTarget    float64
-	LeftHeating    bool
-	RightHeating   bool
 	SubCmd         byte
 	Raw            [PacketSize]byte
 	PoweredOff     bool
@@ -275,8 +273,6 @@ func ParseStatus(data []byte) (*Status, error) {
 		RightCurrent:    rightCur,
 		LeftTarget:      leftTarget,
 		RightTarget:     rightTarget,
-		LeftHeating:     leftCurRaw&0x80 != 0,
-		RightHeating:    rightCurRaw&0x80 != 0,
 		SubCmd:          data[12],
 		Raw:             raw,
 		PoweredOff:      poweredOff,

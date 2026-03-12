@@ -8,62 +8,67 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
-          - goos: windows
-            goarch: arm64
-    defaults:
-      run:
-        working-directory: go
+  release-darwin:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Build CLI
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
+      - name: Build darwin binaries
+        working-directory: go
         run: |
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags="-s -w" -o "../dist/hotwatermat-ble-${GOOS}-${GOARCH}${EXT}" ./cmd/hotwatermat-ble/
-
-      - name: Build MCP server
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: |
-          EXT=""
-          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags="-s -w" -o "../dist/hotwatermat-ble-mcp-${GOOS}-${GOARCH}${EXT}" ./cmd/mcp-server/
+          go mod tidy
+          for arch in amd64 arm64; do
+            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w" \
+              -o "../dist/hotwatermat-ble-darwin-${arch}" ./cmd/hotwatermat-ble/
+            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w" \
+              -o "../dist/hotwatermat-ble-mcp-darwin-${arch}" ./cmd/mcp-server/
+          done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: dist-darwin
           path: dist/
 
-  release:
-    needs: build
+  release-linux:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install BLE deps
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+
+      - name: Build linux amd64
+        working-directory: go
+        run: |
+          go mod tidy
+          CGO_ENABLED=1 go build -ldflags="-s -w" \
+            -o "../dist/hotwatermat-ble-linux-amd64" ./cmd/hotwatermat-ble/
+          CGO_ENABLED=1 go build -ldflags="-s -w" \
+            -o "../dist/hotwatermat-ble-mcp-linux-amd64" ./cmd/mcp-server/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/
+
+  publish:
+    needs: [release-darwin, release-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -74,3 +79,4 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}

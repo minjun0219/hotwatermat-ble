@@ -269,12 +269,12 @@ func handleStatus(args map[string]any) callToolResult {
 	}
 
 	text := fmt.Sprintf(
-		"Mode: %s\nSide: %s\nWater: %s\nLeft: %.1f°C → %.1f°C (heating: %v)\nRight: %.1f°C → %.1f°C (heating: %v)",
+		"Mode: %s\nSide: %s\nWater: %s\nLeft: %.1f°C → %.1f°C\nRight: %.1f°C → %.1f°C",
 		st.ModeName,
 		protocol.SideName(st.Side),
 		protocol.WaterLevelName(st.WaterLevel),
-		st.LeftCurrent, st.LeftTarget, st.LeftHeating,
-		st.RightCurrent, st.RightTarget, st.RightHeating,
+		st.LeftCurrent, st.LeftTarget,
+		st.RightCurrent, st.RightTarget,
 	)
 	return textResult(text)
 }

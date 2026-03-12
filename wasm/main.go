@@ -8,18 +8,26 @@ import (
 	"github.com/minjun0219/hotwatermat-ble/pkg/protocol"
 )
 
+// Keep references to js.Func to prevent GC from releasing them.
+var jsFuncs []js.Func
+
+func registerFunc(name string, fn func(js.Value, []js.Value) any) {
+	f := js.FuncOf(fn)
+	jsFuncs = append(jsFuncs, f)
+	js.Global().Get("hotwatermat").Set(name, f)
+}
+
 func main() {
-	// Register exports
-	js.Global().Set("hotwatermat", map[string]any{
-		"encodeTemp":     js.FuncOf(encodeTemp),
-		"decodeTemp":     js.FuncOf(decodeTemp),
-		"calcChecksum":   js.FuncOf(calcChecksum),
-		"buildHandshake": js.FuncOf(buildHandshake),
-		"buildHeat":      js.FuncOf(buildHeat),
-		"buildPowerOn":   js.FuncOf(buildPowerOn),
-		"buildPowerOff":  js.FuncOf(buildPowerOff),
-		"parseStatus":    js.FuncOf(parseStatus),
-	})
+	js.Global().Set("hotwatermat", map[string]any{})
+
+	registerFunc("encodeTemp", encodeTemp)
+	registerFunc("decodeTemp", decodeTemp)
+	registerFunc("calcChecksum", calcChecksum)
+	registerFunc("buildHandshake", buildHandshake)
+	registerFunc("buildHeat", buildHeat)
+	registerFunc("buildPowerOn", buildPowerOn)
+	registerFunc("buildPowerOff", buildPowerOff)
+	registerFunc("parseStatus", parseStatus)
 
 	// Keep the Go runtime alive
 	select {}
@@ -51,16 +59,13 @@ func calcChecksum(_ js.Value, args []js.Value) any {
 	}
 	arr := args[0]
 	pkt := make([]byte, arr.Length())
-	for i := 0; i < arr.Length(); i++ {
-		pkt[i] = byte(arr.Index(i).Int())
-	}
+	js.CopyBytesToGo(pkt, arr)
 	return js.ValueOf(int(protocol.CalcChecksum(pkt)))
 }
 
 func buildHandshake(_ js.Value, args []js.Value) any {
 	var pkt [protocol.PacketSize]byte
 	if len(args) >= 1 {
-		// With DeviceGid hex string
 		gidHex := args[0].String()
 		gid, err := protocol.ParseDeviceGidHex(gidHex)
 		if err != nil {
@@ -112,9 +117,7 @@ func parseStatus(_ js.Value, args []js.Value) any {
 	}
 	arr := args[0]
 	pkt := make([]byte, arr.Length())
-	for i := 0; i < arr.Length(); i++ {
-		pkt[i] = byte(arr.Index(i).Int())
-	}
+	js.CopyBytesToGo(pkt, arr)
 
 	st, err := protocol.ParseStatus(pkt)
 	if err != nil {
@@ -131,8 +134,6 @@ func parseStatus(_ js.Value, args []js.Value) any {
 		"rightCurrent": st.RightCurrent,
 		"leftTarget":   st.LeftTarget,
 		"rightTarget":  st.RightTarget,
-		"leftHeating":  st.LeftHeating,
-		"rightHeating": st.RightHeating,
 		"poweredOff":   st.PoweredOff,
 	})
 }

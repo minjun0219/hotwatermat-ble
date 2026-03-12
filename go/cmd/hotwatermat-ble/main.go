@@ -74,16 +74,8 @@ var statusCmd = &cobra.Command{
 		fmt.Printf("Mode:    %s\n", st.ModeName)
 		fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))
 		fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))
-		fmt.Printf("Left:    %.1f°C → %.1f°C", st.LeftCurrent, st.LeftTarget)
-		if st.LeftHeating {
-			fmt.Print(" (heating)")
-		}
-		fmt.Println()
-		fmt.Printf("Right:   %.1f°C → %.1f°C", st.RightCurrent, st.RightTarget)
-		if st.RightHeating {
-			fmt.Print(" (heating)")
-		}
-		fmt.Println()
+		fmt.Printf("Left:    %.1f°C → %.1f°C\n", st.LeftCurrent, st.LeftTarget)
+		fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
 		return nil
 	},
 }

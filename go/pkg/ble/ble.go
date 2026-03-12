@@ -201,7 +201,7 @@ func (c *Client) Connect() error {
 	// Send handshake
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
 	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
-	_, err = c.cmdChar.WriteWithResponse(handshake[:])
+	_, err = c.cmdChar.Write(handshake[:])
 	if err != nil {
 		return fmt.Errorf("write handshake: %w", err)
 	}
@@ -261,8 +261,11 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 
 	pkt := protocol.BuildHeat(side, st.LeftCurrentRaw, st.RightCurrentRaw, leftTgt, rightTgt)
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
-	_, err = c.cmdChar.WriteWithResponse(pkt[:])
-	return err
+	_, err = c.cmdChar.Write(pkt[:])
+	if err != nil {
+		return fmt.Errorf("write set_temp command: %w", err)
+	}
+	return nil
 }
 
 // PowerOn sends a power-on command.
@@ -272,14 +275,20 @@ func (c *Client) PowerOn() error {
 		// If no status yet, use zeros
 		pkt := protocol.BuildPowerOn(0, 0)
 		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-		_, err = c.cmdChar.WriteWithResponse(pkt[:])
-		return err
+		_, err = c.cmdChar.Write(pkt[:])
+		if err != nil {
+			return fmt.Errorf("write power_on command (fallback, status unavailable): %w", err)
+		}
+		return nil
 	}
 
 	pkt := protocol.BuildPowerOn(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-	_, err = c.cmdChar.WriteWithResponse(pkt[:])
-	return err
+	_, err = c.cmdChar.Write(pkt[:])
+	if err != nil {
+		return fmt.Errorf("write power_on command: %w", err)
+	}
+	return nil
 }
 
 // PowerOff sends a power-off command.
@@ -288,12 +297,18 @@ func (c *Client) PowerOff() error {
 	if err != nil {
 		pkt := protocol.BuildPowerOff(0, 0)
 		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-		_, err = c.cmdChar.WriteWithResponse(pkt[:])
-		return err
+		_, err = c.cmdChar.Write(pkt[:])
+		if err != nil {
+			return fmt.Errorf("write power_off command (fallback, status unavailable): %w", err)
+		}
+		return nil
 	}
 
 	pkt := protocol.BuildPowerOff(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-	_, err = c.cmdChar.WriteWithResponse(pkt[:])
-	return err
+	_, err = c.cmdChar.Write(pkt[:])
+	if err != nil {
+		return fmt.Errorf("write power_off command: %w", err)
+	}
+	return nil
 }

@@ -277,7 +277,7 @@ func (c *Client) PowerOn() error {
 		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 		_, err = c.cmdChar.Write(pkt[:])
 		if err != nil {
-			return fmt.Errorf("write power_on command: %w", err)
+			return fmt.Errorf("write power_on command (fallback, status unavailable): %w", err)
 		}
 		return nil
 	}
@@ -299,7 +299,7 @@ func (c *Client) PowerOff() error {
 		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 		_, err = c.cmdChar.Write(pkt[:])
 		if err != nil {
-			return fmt.Errorf("write power_off command: %w", err)
+			return fmt.Errorf("write power_off command (fallback, status unavailable): %w", err)
 		}
 		return nil
 	}

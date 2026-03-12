@@ -1,59 +1,59 @@
 # hotwatermat-ble
 
-Control a BLE hot water mat (KDO_HotWaterMat) from Claude Code.
+BLE 온수매트(KDO_HotWaterMat)를 Claude Code에서 제어하는 스킬입니다.
 
-## Overview
+## 개요
 
-This skill provides control of a KDO_HotWaterMat BLE hot water mat device. It can check status, set temperature, and control power via the CLI tool or MCP server.
+KDO_HotWaterMat BLE 온수매트의 상태 확인, 온도 설정, 전원 제어를 CLI 또는 MCP 서버로 수행합니다.
 
-## Prerequisites
+## 사전 조건
 
-- The `hotwatermat-ble` CLI binary must be installed and in PATH
-- BLE adapter must be available on the host machine
-- Device address can be set via `HOTWATERMAT_ADDRESS` environment variable
-- Device authentication key can be set via `HOTWATERMAT_DEVICE_GID` environment variable
+- `hotwatermat-ble` CLI 바이너리가 설치되어 PATH에 있어야 합니다
+- 호스트 머신에 BLE 어댑터가 필요합니다
+- 기기 주소: `HOTWATERMAT_ADDRESS` 환경 변수로 설정
+- 인증 키: `HOTWATERMAT_DEVICE_GID` 환경 변수로 설정
 
-## Available Commands
+## 사용 가능한 명령어
 
-### Check Status
+### 상태 확인
 ```bash
 hotwatermat-ble status
 ```
-Shows current mode, temperatures (left/right), water level, and heating state.
+현재 모드, 좌/우 온도, 수위, 가열 상태를 표시합니다.
 
-### Set Temperature
+### 온도 설정
 ```bash
-# Set both sides to 35°C
+# 양쪽 35°C로 설정
 hotwatermat-ble temp --left 35 --right 35
 
-# Set left side only
+# 왼쪽만 설정
 hotwatermat-ble temp --left 33.5
 
-# Set right side only
+# 오른쪽만 설정
 hotwatermat-ble temp --right 40
 ```
-Temperature range: 28.0°C to 48.0°C in 0.5°C increments.
+온도 범위: 28.0°C ~ 48.0°C (0.5°C 단위)
 
-### Power On
+### 전원 켜기
 ```bash
 hotwatermat-ble on
 ```
-Turns on the mat. Previous temperature settings are restored automatically.
+매트 전원을 켭니다. 이전 온도 설정이 자동 복원됩니다.
 
-### Power Off
+### 전원 끄기
 ```bash
 hotwatermat-ble off
 ```
-**Warning:** After power off, the mat stops BLE advertising. A physical button press is required to turn it back on.
+**주의:** 전원 끄면 BLE 광고가 중단됩니다. 다시 켜려면 물리 버튼을 눌러야 할 수 있습니다.
 
-### Scan for Devices
+### 기기 스캔
 ```bash
 hotwatermat-ble scan
 ```
 
-## MCP Server
+## MCP 서버
 
-The MCP server can be used as a Claude Code MCP server for direct tool integration:
+Claude Code MCP 서버로 직접 도구 통합이 가능합니다:
 
 ```json
 {
@@ -66,26 +66,26 @@ The MCP server can be used as a Claude Code MCP server for direct tool integrati
 }
 ```
 
-### MCP Tools
+### MCP 도구
 
-| Tool | Description |
-|------|-------------|
-| `scan` | Scan for BLE hot water mat devices |
-| `status` | Get current mat status |
-| `set_temp` | Set target temperature (left/right) |
-| `power_on` | Turn on the mat |
-| `power_off` | Turn off the mat |
+| 도구 | 설명 |
+|------|------|
+| `scan` | BLE 온수매트 기기 스캔 |
+| `status` | 현재 매트 상태 조회 |
+| `set_temp` | 목표 온도 설정 (좌/우) |
+| `power_on` | 매트 전원 켜기 |
+| `power_off` | 매트 전원 끄기 |
 
-## Configuration
+## 환경 설정
 
-| Environment Variable | Description |
-|---------------------|-------------|
-| `HOTWATERMAT_ADDRESS` | BLE device address (UUID format on macOS) |
-| `HOTWATERMAT_DEVICE_GID` | 12-char hex authentication key |
+| 환경 변수 | 설명 |
+|-----------|------|
+| `HOTWATERMAT_ADDRESS` | BLE 기기 주소 (macOS에서는 UUID 형식) |
+| `HOTWATERMAT_DEVICE_GID` | 12자리 16진수 인증 키 |
 
-## Tips
+## 팁
 
-- The mat only supports one BLE connection at a time
-- If the official app is connected, force-stop it first
-- Status updates stream at ~1/second while connected
-- Connections are short-lived by design — connect, send command, disconnect
+- 매트는 BLE 연결 1개만 지원합니다
+- 공식 앱이 연결 중이면 먼저 강제 종료하세요
+- 연결 중 상태 업데이트가 ~1초마다 스트리밍됩니다
+- 연결은 짧게 유지합니다 — 연결 → 명령 전송 → 해제

@@ -1,5 +1,4 @@
-// Package protocol implements BLE packet building and parsing
-// for the KDO_HotWaterMat (온수매트) device.
+// Package protocol은 KDO_HotWaterMat(온수매트) BLE 패킷 생성 및 파싱을 구현합니다.
 package protocol
 
 import (
@@ -19,13 +18,13 @@ const (
 	DirAuth      byte = 0xF1
 
 	ServiceUUID = "00001c0d-d102-11e1-9b23-2ce2a80000dd"
-	Char1UUID   = "00001c0d-d102-11e1-9b23-2ce2a80100dd" // STATUS notifications
-	Char2UUID   = "00001c0d-d102-11e1-9b23-2ce2a80200dd" // COMMAND writes + auth
-	Char3UUID   = "00001c0d-d102-11e1-9b23-2ce2a80400dd" // TBD
+	Char1UUID   = "00001c0d-d102-11e1-9b23-2ce2a80100dd" // 상태 알림 수신
+	Char2UUID   = "00001c0d-d102-11e1-9b23-2ce2a80200dd" // 명령 쓰기 + 인증
+	Char3UUID   = "00001c0d-d102-11e1-9b23-2ce2a80400dd" // 미사용
 
 	DefaultBLEAddress = "FD319CFA-2E62-116D-D348-5B9FEEE95D2F"
 
-	// Mode values (byte[2])
+	// 모드 값 (byte[2])
 	ModeHeat     byte = 0x01
 	ModeTimerOff byte = 0x02
 	ModeSleep    byte = 0x03
@@ -33,22 +32,22 @@ const (
 	ModeFastheat byte = 0x07
 	ModeIoncare  byte = 0x08
 
-	// Side values (byte[3])
+	// 좌/우 선택 값 (byte[3])
 	SideLeft  byte = 0x02
 	SideRight byte = 0x04
 	SideBoth  byte = 0x06
 
-	// Temperature range
+	// 온도 범위
 	TempMin float64 = 28.0
 	TempMax float64 = 48.0
 
 	Pad byte = 0xFE
 )
 
-// DefaultDeviceGid is the default 6-byte authentication key.
+// DefaultDeviceGid는 6바이트 기기 인증 키 (예시 값)입니다.
 var DefaultDeviceGid = [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
 
-// ModeNames maps mode byte values to human-readable names.
+// ModeNames는 모드 바이트 값을 읽기 쉬운 이름으로 매핑합니다.
 var ModeNames = map[byte]string{
 	ModeHeat:     "HEAT",
 	ModeTimerOff: "TIMER_OFF",
@@ -223,7 +222,7 @@ type Status struct {
 	PoweredOff     bool
 }
 
-// ParseStatus parses a 20-byte STATUS notification from the mat.
+// ParseStatus는 매트에서 수신한 20바이트 상태 알림 패킷을 파싱합니다.
 func ParseStatus(data []byte) (*Status, error) {
 	if len(data) < PacketSize {
 		return nil, errors.New("packet too short")
@@ -279,8 +278,8 @@ func ParseStatus(data []byte) (*Status, error) {
 	}, nil
 }
 
-// ParseAuthResponse checks if a received packet is a B2F1 authentication response.
-// Returns the auth type byte: 0x01 = pairing response, 0x02 = authenticated.
+// ParseAuthResponse는 수신된 패킷이 B2F1 인증 응답인지 확인합니다.
+// 인증 타입 바이트를 반환합니다: 0x01 = 페어링 응답, 0x02 = 인증 완료.
 func ParseAuthResponse(data []byte) (byte, error) {
 	if len(data) < PacketSize {
 		return 0, errors.New("packet too short")

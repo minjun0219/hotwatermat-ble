@@ -1,6 +1,6 @@
 module github.com/minjun0219/hotwatermat-ble
 
-go 1.22.0
+go 1.22
 
 require (
 	github.com/spf13/cobra v1.8.1

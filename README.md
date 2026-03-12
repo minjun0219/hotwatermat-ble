@@ -1,5 +1,7 @@
 # hotwatermat-ble
 
+> Open-source BLE controller for KDO_HotWaterMat (EQM555) — CLI, MCP server, and npm/WASM package.
+
 BLE 온수매트(KDO_HotWaterMat / EQM555)를 커맨드라인, MCP 서버, 또는 JavaScript/TypeScript로 제어하는 오픈소스 도구입니다.
 
 WiFi나 클라우드 없이 BLE만으로 직접 제어합니다.

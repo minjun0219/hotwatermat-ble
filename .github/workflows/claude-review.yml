@@ -6,7 +6,7 @@ on:
 
 jobs:
   review:
-    if: ${{ github.actor != 'haeg-reviewer[bot]' && github.actor != 'ttd-coder[bot]' }}
+    if: ${{ !endsWith(github.actor, '[bot]') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

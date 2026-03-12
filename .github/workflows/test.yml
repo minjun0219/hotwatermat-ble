@@ -3,7 +3,7 @@ name: Test
 on:
   push:
     branches: [main, "feature/**", "fix/**", "chore/**"]
-  pull_request_target:
+  pull_request:
     branches: [main]
 
 jobs:
@@ -14,8 +14,6 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-go@v5
         with:

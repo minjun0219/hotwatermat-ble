@@ -1,11 +1,11 @@
-# hotwatermat-ble-core
+# hotwatermat-ble
 
 BLE protocol library for KDO_HotWaterMat (hot water mat) devices. Provides packet building and parsing via a WASM-compiled Go core.
 
 ## Installation
 
 ```bash
-npm install hotwatermat-ble-core
+npm install hotwatermat-ble
 ```
 
 ## Usage
@@ -22,7 +22,7 @@ import {
   parseStatus,
   SIDE_LEFT,
   SIDE_BOTH,
-} from "hotwatermat-ble-core";
+} from "hotwatermat-ble";
 
 // Initialize WASM module (required once)
 await init();

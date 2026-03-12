@@ -1,5 +1,5 @@
 {
-  "name": "hotwatermat-ble-core",
+  "name": "hotwatermat-ble",
   "version": "0.1.0",
   "description": "BLE protocol library for KDO_HotWaterMat (hot water mat) — WASM-powered packet builder/parser",
   "main": "dist/index.js",

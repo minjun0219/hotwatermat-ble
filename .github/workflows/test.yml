@@ -2,8 +2,8 @@ name: Test
 
 on:
   push:
-    branches: [main, "feature/**"]
-  pull_request:
+    branches: [main, "feature/**", "fix/**", "chore/**"]
+  pull_request_target:
     branches: [main]
 
 jobs:
@@ -14,16 +14,15 @@ jobs:
         working-directory: go
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Generate go.sum
-        run: go mod tidy
-
-      - name: Vet
-        run: go vet ./pkg/protocol/...
-
-      - name: Test
+      - name: Test protocol
         run: go test -v -race ./pkg/protocol/...
+
+      - name: Vet protocol
+        run: go vet ./pkg/protocol/...

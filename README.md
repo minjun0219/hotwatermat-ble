@@ -51,7 +51,7 @@ go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
 ### npm package
 
 ```bash
-npm install hotwatermat-ble-core
+npm install hotwatermat-ble
 ```
 
 ### Python CLI (prototype)
@@ -125,7 +125,7 @@ Available MCP tools: `scan`, `status`, `set_temp`, `power_on`, `power_off`
 ### npm Package
 
 ```typescript
-import { init, encodeTemp, buildHeat, parseStatus, SIDE_BOTH } from 'hotwatermat-ble-core';
+import { init, encodeTemp, buildHeat, parseStatus, SIDE_BOTH } from 'hotwatermat-ble';
 
 await init(); // Load WASM
 

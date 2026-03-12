@@ -1,0 +1,40 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR for the hotwatermat-ble project (BLE hot water mat controller).
+
+            Key context:
+            - BLE protocol spec is in PROTOCOL.md
+            - Temperature encoding uses 0.5°C precision (values > 127 = half-degree)
+            - All BLE writes go to CHAR2 (0200dd), STATUS arrives on CHAR1 (0100dd)
+            - Do NOT use trademarked brand names (HotWaterMat, 온수매트)
+
+            Focus on:
+            - Protocol correctness (packet structure, checksum, temperature encoding)
+            - BLE reliability (write-with-response, connection handling, error recovery)
+            - Code quality and Go/Python best practices
+            - Security (no hardcoded secrets, proper input validation)
+
+            Use `gh pr comment` for top-level feedback.
+            Use `mcp__github_inline_comment__create_inline_comment` for specific code issues.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"

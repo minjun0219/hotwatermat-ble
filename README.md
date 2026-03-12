@@ -1,17 +1,63 @@
 # hotwatermat-ble
 
-Python CLI to control a BLE hot water mat (KDO_HotWaterMat / EQM555).
+Control a BLE hot water mat (KDO_HotWaterMat / EQM555) from the command line, MCP server, or JavaScript/TypeScript.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                   Applications                   │
+│  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
+│  │   CLI    │  │MCP Server │  │  npm package │  │
+│  │  (cobra) │  │ (JSON-RPC)│  │  (TypeScript)│  │
+│  └────┬─────┘  └─────┬─────┘  └──────┬───────┘  │
+│       │              │               │           │
+│  ┌────┴──────────────┴───┐    ┌──────┴───────┐  │
+│  │     go/pkg/ble/       │    │  WASM build  │  │
+│  │   (tinygo bluetooth)  │    │  (TinyGo)    │  │
+│  └────────────┬──────────┘    └──────┬───────┘  │
+│               │                      │           │
+│  ┌────────────┴──────────────────────┴───────┐  │
+│  │          go/pkg/protocol/                  │  │
+│  │    Packet build/parse, temp encoding,      │  │
+│  │    checksum, handshake, STATUS parser       │  │
+│  └────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
 
 ## Installation
 
+### CLI (from release)
+
+Download from [Releases](https://github.com/minjun0219/hotwatermat-ble/releases):
+
 ```bash
-pip install -e .
+# macOS ARM
+curl -L -o hotwatermat-ble \
+  https://github.com/minjun0219/hotwatermat-ble/releases/latest/download/hotwatermat-ble-darwin-arm64
+chmod +x hotwatermat-ble
+sudo mv hotwatermat-ble /usr/local/bin/
 ```
 
-Or install dependencies directly:
+### CLI (from source)
+
+Requires Go 1.22+:
 
 ```bash
-pip install bleak click
+cd go
+go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
+```
+
+### npm package
+
+```bash
+npm install hotwatermat-ble
+```
+
+### Python CLI (prototype)
+
+```bash
+pip install -e .
 ```
 
 ## Usage
@@ -25,70 +71,110 @@ hotwatermat-ble scan
 # Show current status
 hotwatermat-ble status
 
-# Set temperature (28-48°C)
-hotwatermat-ble set-temp --left 35 --right 35
+# Set temperature (28.0-48.0°C, 0.5°C steps)
+hotwatermat-ble temp --left 35 --right 35
+hotwatermat-ble temp --left 33.5
 
-# Power on/off
-hotwatermat-ble power on
-hotwatermat-ble power off
+# Power on
+hotwatermat-ble on
 
-# Fast heat on/off
-hotwatermat-ble fastheat on
-hotwatermat-ble fastheat off
-
-# Standby mode
-hotwatermat-ble standby
+# Power off (requires physical button to restart)
+hotwatermat-ble off
 ```
 
-### Options
+### CLI Options
 
 ```bash
 # Specify BLE address
 hotwatermat-ble --address <ADDRESS> status
 
-# Or use environment variable
+# Specify device authentication key
+hotwatermat-ble --device-gid 13CE3CC53E5A status
+
+# Enable debug output
+hotwatermat-ble --debug status
+
+# Environment variables
 export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2F
-hotwatermat-ble status
+export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
 ```
 
-### Run as module
+### MCP Server
+
+The MCP server enables tool-based control from AI assistants:
 
 ```bash
-python3 -m hotwatermat_ble status
+# Build and run
+cd go && go build -o hotwatermat-ble-mcp ./cmd/mcp-server/
 ```
 
-## BLE Protocol
+Configure in Claude Code (`settings.json`):
 
+```json
+{
+  "mcpServers": {
+    "hotwatermat": {
+      "command": "/path/to/hotwatermat-ble-mcp"
+    }
+  }
+}
+```
+
+Available MCP tools: `scan`, `status`, `set_temp`, `power_on`, `power_off`
+
+### npm Package
+
+```typescript
+import { init, encodeTemp, buildHeat, parseStatus, SIDE_BOTH } from 'hotwatermat-ble';
+
+await init(); // Load WASM
+
+const target = encodeTemp(35.0);
+const packet = buildHeat(SIDE_BOTH, 0x21, 0x1C, target, target);
+```
+
+## Protocol
+
+See [PROTOCOL.md](PROTOCOL.md) for the complete BLE protocol specification.
+
+Key details:
+- BLE name: `KDO_HotWaterMat`
 - Service UUID: `00001c0d-d102-11e1-9b23-2ce2a80000dd`
-- Characteristic UUID: `00001c0d-d102-11e1-9b23-2ce2a80100dd`
-- Packet size: 20 bytes fixed, write without response
-- Device sends periodic notify packets on connect
+- 20-byte fixed packets with checksum
+- Temperature: 28.0–48.0°C, 0.5°C precision
+- Application-level auth via 6-byte DeviceGid handshake
+- Single BLE connection only (mat stops advertising when connected)
+
+## Project Structure
+
+```
+hotwatermat-ble/
+├── go/
+│   ├── pkg/protocol/     # Packet build/parse (pure Go, no BLE deps)
+│   ├── pkg/ble/          # BLE client (tinygo bluetooth)
+│   ├── cmd/hotwatermat-ble/  # CLI binary
+│   └── cmd/mcp-server/   # MCP server (JSON-RPC stdio)
+├── wasm/                 # TinyGo WASM build of protocol
+├── npm/                  # npm package (TypeScript wrapper)
+├── skill/                # OpenClaw skill definition
+├── hotwatermat_ble/      # Python prototype
+├── PROTOCOL.md           # BLE protocol specification
+└── .github/workflows/    # CI/CD (test + release)
+```
+
+## Development
+
+```bash
+# Run Go tests
+cd go && go test -v ./pkg/protocol/...
+
+# Build WASM
+chmod +x wasm/build.sh && ./wasm/build.sh
+
+# Build npm package
+cd npm && npm run build
+```
 
 ## License
 
 MIT
-
----
-
-## 실기기 테스트 결과 (2026-03-11)
-
-### 확인된 동작
-- ✅ **BLE 상태 수신**: 온도, 물 수위, 가열 여부 정상 수신
-- ✅ **연결 방법**: 앱 force-stop → BleakScanner → connect → handshake → notify
-- ✅ **핸드쉐이크**: `B2 01 4F 5F C6 10 B1 69 FE...89` (고정값 확인)
-- ✅ **연결 초기화 시퀀스**: CCCD subscribe → handshake → B2F1 응답 → 상태 스트리밍
-
-### macOS 연결 제약 (진행 중)
-- 매트는 **단일 BLE 연결**만 지원 (연결 중엔 advertising 안 함)
-- bleak UUID 캐시로 non-advertising 기기 연결 가능 (앱 force-stop 직후 타이밍)
-- **상태 읽기**: 정상 동작 ✅
-- **명령 쓰기**: B2F1 인증 완료 필요 (macOS CoreBluetooth 이슈 조사 중)
-
-### 연결 시퀀스
-```python
-# 앱 연결 상태에서:
-# 1. adb shell am force-stop <pkg>
-# 2. BleakScanner로 매트 발견 (advertising 시작)
-# 3. BleakClient.connect() → start_notify → handshake 전송
-# 4. 상태 notify 수신 시작 (좌/우 온도, 물 수위 등)
-```

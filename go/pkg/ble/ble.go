@@ -263,7 +263,7 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
 	_, err = c.cmdChar.Write(pkt[:])
 	if err != nil {
-		return fmt.Errorf("온도 설정 명령 전송 실패: %w", err)
+		return fmt.Errorf("write set_temp command: %w", err)
 	}
 	return nil
 }
@@ -277,7 +277,7 @@ func (c *Client) PowerOn() error {
 		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 		_, err = c.cmdChar.Write(pkt[:])
 		if err != nil {
-			return fmt.Errorf("전원 켜기 명령 전송 실패: %w", err)
+			return fmt.Errorf("write power_on command: %w", err)
 		}
 		return nil
 	}
@@ -286,7 +286,7 @@ func (c *Client) PowerOn() error {
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 	_, err = c.cmdChar.Write(pkt[:])
 	if err != nil {
-		return fmt.Errorf("전원 켜기 명령 전송 실패: %w", err)
+		return fmt.Errorf("write power_on command: %w", err)
 	}
 	return nil
 }
@@ -299,7 +299,7 @@ func (c *Client) PowerOff() error {
 		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 		_, err = c.cmdChar.Write(pkt[:])
 		if err != nil {
-			return fmt.Errorf("전원 끄기 명령 전송 실패: %w", err)
+			return fmt.Errorf("write power_off command: %w", err)
 		}
 		return nil
 	}
@@ -308,7 +308,7 @@ func (c *Client) PowerOff() error {
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 	_, err = c.cmdChar.Write(pkt[:])
 	if err != nil {
-		return fmt.Errorf("전원 끄기 명령 전송 실패: %w", err)
+		return fmt.Errorf("write power_off command: %w", err)
 	}
 	return nil
 }

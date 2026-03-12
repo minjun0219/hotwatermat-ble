@@ -1,6 +1,6 @@
 # hotwatermat-ble
 
-> Open-source BLE controller for KDO_HotWaterMat (EQM555) — CLI, MCP server, and npm/WASM package.
+> Open-source BLE controller for a heated mattress pad (KDO_HotWaterMat / EQM555). Control your mat from the terminal or AI agents — no proprietary app needed.
 
 BLE 온수매트(KDO_HotWaterMat / EQM555)를 커맨드라인, MCP 서버, 또는 JavaScript/TypeScript로 제어하는 오픈소스 도구입니다.
 

@@ -277,11 +277,13 @@ func (c *Client) Pair() ([6]byte, error) {
 }
 
 // Disconnect closes the BLE connection.
+// Safe to call even if Connect/Pair did not complete successfully.
 func (c *Client) Disconnect() error {
-	if !c.connected {
+	c.connected = false
+	var zeroDevice bluetooth.Device
+	if c.device == zeroDevice {
 		return nil
 	}
-	c.connected = false
 	return c.device.Disconnect()
 }
 

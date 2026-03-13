@@ -52,30 +52,74 @@ jobs:
           go-version-file: go/go.mod
 
       - name: Install BLE deps
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev gcc-aarch64-linux-gnu
 
-      - name: Build and archive linux amd64
+      - name: Build and archive linux binaries
         working-directory: go
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          mkdir -p ../staging
-          CGO_ENABLED=1 go build -ldflags="-s -w" \
-            -o "../staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
-          CGO_ENABLED=1 go build -ldflags="-s -w" \
-            -o "../staging/hotwatermat-ble-mcp" ./cmd/mcp-server/
-          cp ../README.md ../LICENSE ../PROTOCOL.md ../staging/ 2>/dev/null || true
-          mkdir -p ../dist
-          tar -czf "../dist/hotwatermat-ble_${VERSION}_linux_amd64.tar.gz" -C ../staging .
-          rm -rf ../staging
+          for arch in amd64 arm64; do
+            mkdir -p ../staging
+            if [ "$arch" = "arm64" ]; then
+              CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=$arch go build -ldflags="-s -w" \
+                -o "../staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+              CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=$arch go build -ldflags="-s -w" \
+                -o "../staging/hotwatermat-ble-mcp" ./cmd/mcp-server/
+            else
+              CGO_ENABLED=1 GOOS=linux GOARCH=$arch go build -ldflags="-s -w" \
+                -o "../staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+              CGO_ENABLED=1 GOOS=linux GOARCH=$arch go build -ldflags="-s -w" \
+                -o "../staging/hotwatermat-ble-mcp" ./cmd/mcp-server/
+            fi
+            cp ../README.md ../LICENSE ../PROTOCOL.md ../staging/ 2>/dev/null || true
+            mkdir -p ../dist
+            tar -czf "../dist/hotwatermat-ble_${VERSION}_linux_${arch}.tar.gz" -C ../staging .
+            rm -rf ../staging
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: dist-linux
           path: dist/
 
+  release-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+
+      - name: Build and archive windows amd64
+        working-directory: go
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p ../staging
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" \
+            -o "../staging/hotwatermat-ble.exe" ./cmd/hotwatermat-ble/
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" \
+            -o "../staging/hotwatermat-ble-mcp.exe" ./cmd/mcp-server/
+          cp ../README.md ../LICENSE ../PROTOCOL.md ../staging/ 2>/dev/null || true
+          mkdir -p ../dist
+          cd ../staging
+          7z a "../dist/hotwatermat-ble_${VERSION}_windows_amd64.zip" .
+          cd ..
+          rm -rf staging
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows
+          path: dist/
+
   publish:
-    needs: [release-darwin, release-linux]
-    if: always() && needs.release-darwin.result == 'success'
+    needs: [release-darwin, release-linux, release-windows]
+    if: always() && (needs.release-darwin.result == 'success' || needs.release-linux.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +132,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.tar.gz > checksums.txt
+          sha256sum *.tar.gz *.zip 2>/dev/null > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

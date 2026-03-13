@@ -43,6 +43,27 @@ chmod +x hotwatermat-ble
 sudo mv hotwatermat-ble /usr/local/bin/
 ```
 
+### macOS 설정
+
+릴리즈 바이너리를 macOS에서 실행하려면 추가 설정이 필요합니다.
+
+**1. 개발자 미확인 경고 해제:**
+
+다운로드한 바이너리는 Apple 공증이 없으므로 격리 속성을 제거해야 합니다:
+
+```bash
+xattr -d com.apple.quarantine hotwatermat-ble
+```
+
+또는 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 허용"을 클릭하세요.
+
+**2. Bluetooth 권한:**
+
+BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:
+
+- 첫 실행 시 macOS가 Bluetooth 권한 팝업을 표시합니다 → **허용**을 선택하세요.
+- 팝업이 나타나지 않거나 거부한 경우: 시스템 설정 → 개인정보 보호 및 보안 → Bluetooth → 터미널(또는 사용 중인 터미널 앱) 허용
+
 ### CLI (소스 빌드)
 
 Go 1.22+ 필요:

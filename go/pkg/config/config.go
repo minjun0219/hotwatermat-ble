@@ -63,6 +63,9 @@ func Load() (*DeviceConfig, error) {
 
 // Save는 기기 설정을 파일에 저장합니다.
 func Save(cfg *DeviceConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("config: Save called with nil *DeviceConfig")
+	}
 	dir, err := configDir()
 	if err != nil {
 		return err

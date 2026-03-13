@@ -71,6 +71,7 @@ type Client struct {
 	mu         sync.Mutex
 	connected  bool
 	authDone   chan struct{}
+	pairDone   chan [6]byte // 페어링 완료 시 GID 전달
 	debug      bool
 }
 
@@ -80,6 +81,7 @@ func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 		address:   address,
 		deviceGid: deviceGid,
 		authDone:  make(chan struct{}),
+		pairDone:  make(chan [6]byte, 1),
 		debug:     debug,
 	}
 }
@@ -90,8 +92,9 @@ func (c *Client) debugf(format string, args ...any) {
 	}
 }
 
-// Connect establishes a BLE connection and authenticates.
-func (c *Client) Connect() error {
+// connectBLE는 BLE 연결 + 서비스/특성 검색 + 알림 구독까지 수행합니다.
+// 핸드셰이크는 보내지 않습니다.
+func (c *Client) connectBLE() error {
 	if err := adapter.Enable(); err != nil {
 		return wrapBLEEnableError(err)
 	}
@@ -182,7 +185,22 @@ func (c *Client) Connect() error {
 	err = c.cmdChar.EnableNotifications(func(buf []byte) {
 		c.debugf("AUTH: %s", protocol.FormatPacket(buf))
 		authType, err := protocol.ParseAuthResponse(buf)
-		if err == nil && authType == 0x02 {
+		if err != nil {
+			return
+		}
+		switch authType {
+		case 0x01:
+			// 페어링 응답 — DeviceGid 추출
+			gid, err := protocol.ParseDeviceGid(buf)
+			if err == nil {
+				c.debugf("Pairing response received, GID: %s", protocol.FormatDeviceGid(gid))
+				select {
+				case c.pairDone <- gid:
+				default:
+				}
+			}
+		case 0x02:
+			// 인증 완료
 			c.debugf("Authenticated!")
 			select {
 			case <-c.authDone:
@@ -197,11 +215,19 @@ func (c *Client) Connect() error {
 
 	// Wait before handshake (per connection sequence)
 	time.Sleep(300 * time.Millisecond)
+	return nil
+}
 
-	// Send handshake
+// Connect establishes a BLE connection and authenticates with existing DeviceGid.
+func (c *Client) Connect() error {
+	if err := c.connectBLE(); err != nil {
+		return err
+	}
+
+	// Send handshake with key
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
 	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
-	_, err = writeCharacteristic(c.cmdChar, handshake[:])
+	_, err := writeCharacteristic(c.cmdChar, handshake[:])
 	if err != nil {
 		return fmt.Errorf("write handshake: %w", err)
 	}
@@ -218,12 +244,46 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// Pair은 초기 페어링을 수행하여 기기의 DeviceGid를 획득합니다.
+// deviceGid가 빈 값인 Client에서 호출해야 합니다.
+func (c *Client) Pair() ([6]byte, error) {
+	var zeroGid [6]byte
+	if c.deviceGid != zeroGid {
+		return [6]byte{}, errors.New("Pair must be called on a Client with an empty DeviceGid")
+	}
+
+	if err := c.connectBLE(); err != nil {
+		return [6]byte{}, err
+	}
+
+	// 초기 페어링 핸드셰이크 전송 (GID 없이)
+	handshake := protocol.BuildHandshake()
+	c.debugf("Sending pairing handshake: %s", protocol.FormatPacket(handshake[:]))
+	_, err := writeCharacteristic(c.cmdChar, handshake[:])
+	if err != nil {
+		return [6]byte{}, fmt.Errorf("write pairing handshake: %w", err)
+	}
+
+	// B2F1 type=0x01 페어링 응답 대기
+	select {
+	case gid := <-c.pairDone:
+		c.debugf("Pairing complete, GID: %s", protocol.FormatDeviceGid(gid))
+		c.deviceGid = gid
+		c.connected = true
+		return gid, nil
+	case <-time.After(10 * time.Second):
+		return [6]byte{}, errors.New("pairing timeout - is the mat in pairing mode?")
+	}
+}
+
 // Disconnect closes the BLE connection.
+// Safe to call even if Connect/Pair did not complete successfully.
 func (c *Client) Disconnect() error {
-	if !c.connected {
+	c.connected = false
+	var zeroDevice bluetooth.Device
+	if c.device == zeroDevice {
 		return nil
 	}
-	c.connected = false
 	return c.device.Disconnect()
 }
 

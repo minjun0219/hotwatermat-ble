@@ -315,6 +315,11 @@ func FormatPacket(pkt []byte) string {
 	return strings.Join(parts, " ")
 }
 
+// FormatDeviceGid는 6바이트 DeviceGid를 대문자 hex 문자열로 포맷합니다.
+func FormatDeviceGid(gid [6]byte) string {
+	return fmt.Sprintf("%02X%02X%02X%02X%02X%02X", gid[0], gid[1], gid[2], gid[3], gid[4], gid[5])
+}
+
 // ParseDeviceGidHex parses a hex string (e.g. "13CE3CC53E5A") into a DeviceGid.
 func ParseDeviceGidHex(s string) ([6]byte, error) {
 	var gid [6]byte

@@ -375,6 +375,15 @@ func TestParseDeviceGidHex(t *testing.T) {
 	}
 }
 
+func TestFormatDeviceGid(t *testing.T) {
+	gid := testDeviceGid
+	got := FormatDeviceGid(gid)
+	want := "13CE3CC53E5A"
+	if got != want {
+		t.Errorf("FormatDeviceGid = %q, want %q", got, want)
+	}
+}
+
 func TestFormatPacket(t *testing.T) {
 	pkt := []byte{0xB2, 0x01, 0xFE}
 	got := FormatPacket(pkt)

@@ -133,16 +133,16 @@ type Client struct {
 	lastStatus *protocol.Status
 
 	// mu는 lastStatus 필드의 동시 접근을 보호하는 뮤텍스입니다.
-	// BLE 알림 콜백(고루틴)과 GetStatus 호출이 동시에 접근할 수 있습니다.
 	mu sync.Mutex
 
 	// connected는 현재 연결 상태를 나타냅니다.
 	connected bool
 
 	// authDone은 인증 완료를 알리는 채널입니다.
-	// 인증이 완료되면(authType=0x02) 이 채널이 닫힙니다.
-	// Connect 메서드에서 이 채널을 기다려 인증 완료를 확인합니다.
 	authDone chan struct{}
+
+	// pairDone은 페어링 완료 시 GID를 전달하는 채널입니다.
+	pairDone chan [6]byte
 
 	// debug는 디버그 로그 출력 여부입니다.
 	debug bool
@@ -161,6 +161,7 @@ func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 		address:   address,
 		deviceGid: deviceGid,
 		authDone:  make(chan struct{}),
+		pairDone:  make(chan [6]byte, 1),
 		debug:     debug,
 	}
 }
@@ -173,24 +174,17 @@ func (c *Client) debugf(format string, args ...any) {
 	}
 }
 
-// Connect는 BLE 기기에 연결하고 인증을 수행합니다.
+// connectBLE는 BLE 연결 + 서비스/특성 검색 + 알림 구독까지 수행합니다.
+// 핸드셰이크는 보내지 않습니다.
 //
-// 전체 연결 과정:
+// 과정:
 //  1. BLE 어댑터 활성화
 //  2. 지정된 주소 또는 "KDO_HotWaterMat" 이름으로 기기 스캔 (10초 타임아웃)
 //  3. 기기에 연결
-//  4. 서비스 탐색 (ServiceUUID)
-//  5. 특성 탐색 (CHAR1, CHAR2)
-//  6. CHAR1에 STATUS 알림 구독 — 수신된 상태를 lastStatus에 저장
-//  7. CHAR2에 인증 알림 구독 — authType=0x02 수신 시 authDone 채널 닫기
-//  8. 300ms 대기 (연결 안정화)
-//  9. CHAR2로 DeviceGid 포함 핸드셰이크 전송
-//  10. 인증 완료 대기 (5초 타임아웃)
-//
-// 인증 실패 시 "authentication timeout (wrong DeviceGid?)" 오류가 반환됩니다.
-// DeviceGid가 잘못되었거나, 기기가 이미 다른 앱에 연결된 경우 발생할 수 있습니다.
-func (c *Client) Connect() error {
-	// 1단계: BLE 어댑터 활성화 (블루투스가 꺼져있으면 여기서 실패)
+//  4. 서비스/특성 탐색
+//  5. CHAR1/CHAR2 알림 구독
+//  6. 300ms 대기 (연결 안정화)
+func (c *Client) connectBLE() error {
 	if err := adapter.Enable(); err != nil {
 		return wrapBLEEnableError(err)
 	}
@@ -292,7 +286,22 @@ func (c *Client) Connect() error {
 	err = c.cmdChar.EnableNotifications(func(buf []byte) {
 		c.debugf("AUTH: %s", protocol.FormatPacket(buf))
 		authType, err := protocol.ParseAuthResponse(buf)
-		if err == nil && authType == 0x02 {
+		if err != nil {
+			return
+		}
+		switch authType {
+		case 0x01:
+			// 페어링 응답 — DeviceGid 추출
+			gid, err := protocol.ParseDeviceGid(buf)
+			if err == nil {
+				c.debugf("Pairing response received, GID: %s", protocol.FormatDeviceGid(gid))
+				select {
+				case c.pairDone <- gid:
+				default:
+				}
+			}
+		case 0x02:
+			// 인증 완료
 			c.debugf("Authenticated!")
 			// authDone 채널을 안전하게 닫기 (이미 닫힌 경우 패닉 방지)
 			select {
@@ -310,11 +319,19 @@ func (c *Client) Connect() error {
 	// 8단계: 연결 안정화를 위해 300ms 대기
 	// BLE 연결 직후 바로 쓰기를 하면 실패할 수 있음
 	time.Sleep(300 * time.Millisecond)
+	return nil
+}
 
-	// 9단계: DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
+// Connect는 BLE 기기에 연결하고 기존 DeviceGid로 인증합니다.
+func (c *Client) Connect() error {
+	if err := c.connectBLE(); err != nil {
+		return err
+	}
+
+	// DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
 	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
-	_, err = writeCharacteristic(c.cmdChar, handshake[:])
+	_, err := writeCharacteristic(c.cmdChar, handshake[:])
 	if err != nil {
 		return fmt.Errorf("write handshake: %w", err)
 	}
@@ -332,15 +349,46 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// Pair은 초기 페어링을 수행하여 기기의 DeviceGid를 획득합니다.
+// deviceGid가 빈 값인 Client에서 호출해야 합니다.
+func (c *Client) Pair() ([6]byte, error) {
+	var zeroGid [6]byte
+	if c.deviceGid != zeroGid {
+		return [6]byte{}, errors.New("Pair must be called on a Client with an empty DeviceGid")
+	}
+
+	if err := c.connectBLE(); err != nil {
+		return [6]byte{}, err
+	}
+
+	// 초기 페어링 핸드셰이크 전송 (GID 없이)
+	handshake := protocol.BuildHandshake()
+	c.debugf("Sending pairing handshake: %s", protocol.FormatPacket(handshake[:]))
+	_, err := writeCharacteristic(c.cmdChar, handshake[:])
+	if err != nil {
+		return [6]byte{}, fmt.Errorf("write pairing handshake: %w", err)
+	}
+
+	// B2F1 type=0x01 페어링 응답 대기
+	select {
+	case gid := <-c.pairDone:
+		c.debugf("Pairing complete, GID: %s", protocol.FormatDeviceGid(gid))
+		c.deviceGid = gid
+		c.connected = true
+		return gid, nil
+	case <-time.After(10 * time.Second):
+		return [6]byte{}, errors.New("pairing timeout - is the mat in pairing mode?")
+	}
+}
+
 // Disconnect는 BLE 연결을 해제합니다.
-//
-// 이미 연결 해제된 상태에서 호출해도 오류를 반환하지 않습니다.
-// defer client.Disconnect()로 사용하는 것을 권장합니다.
+// Connect/Pair이 완료되지 않은 상태에서도 안전하게 호출 가능합니다.
 func (c *Client) Disconnect() error {
-	if !c.connected {
+	c.connected = false
+	var zeroDevice bluetooth.Device
+	if c.device == zeroDevice {
 		return nil
 	}
-	c.connected = false
 	return c.device.Disconnect()
 }
 

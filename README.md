@@ -126,7 +126,7 @@ AI 어시스턴트에서 도구 기반 제어가 가능합니다.
 ```bash
 # Releases 페이지에서 버전 확인 후 다운로드 (예: v0.1.0)
 VERSION=v0.1.0  # 원하는 버전으로 변경
-curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xz
+curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xzf -
 sudo mv hotwatermat-ble-mcp /usr/local/bin/
 ```
 

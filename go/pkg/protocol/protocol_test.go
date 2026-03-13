@@ -474,9 +474,17 @@ func TestParseDeviceGidHex(t *testing.T) {
 	}
 }
 
+// TestFormatDeviceGid는 DeviceGid를 hex 문자열로 포맷하는 것을 테스트합니다.
+func TestFormatDeviceGid(t *testing.T) {
+	gid := testDeviceGid
+	got := FormatDeviceGid(gid)
+	want := "13CE3CC53E5A"
+	if got != want {
+		t.Errorf("FormatDeviceGid = %q, want %q", got, want)
+	}
+}
+
 // TestFormatPacket은 패킷의 16진수 포맷팅을 테스트합니다.
-//
-// 각 바이트가 대문자 2자리 16진수로 변환되고 공백으로 구분되는지 확인합니다.
 func TestFormatPacket(t *testing.T) {
 	pkt := []byte{0xB2, 0x01, 0xFE}
 	got := FormatPacket(pkt)

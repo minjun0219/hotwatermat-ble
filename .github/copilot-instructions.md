@@ -14,7 +14,9 @@ BLE 온수매트 컨트롤러 프로젝트입니다. CLI, MCP 서버, npm/WASM �
 - **프로토콜 정확성**: 패킷은 항상 20바이트, 체크섬은 `sum(bytes[1:19]) & 0xFF`
 - **온도 인코딩**: 온도가 정수이면 그대로 인코딩하고, `x.5°C`인 경우에만 `encoded = temp + 127.5` 규칙을 적용합니다. Bit7은 난방 플래그가 아닙니다.
 - **BLE 특성**: CHAR1(`0100dd`)은 STATUS 수신 전용, CHAR2(`0200dd`)는 모든 쓰기 작업용
-- **Write 모드**: 직접 `WriteWithoutResponse()` 호출 금지. 모든 쓰기는 `pkg/ble`의 `writeCharacteristic()` 래퍼를 통해 수행하세요. 내부 구현은 플랫폼별로 다릅니다(macOS: write-with-response, Linux: tinygo 제약으로 WriteWithoutResponse 사용).
+- **Write 모드**: `go/pkg/ble` 내부에서 BLE 특성 쓰기를 추가·수정할 때는 `writeCharacteristic()` 래퍼를 사용하세요. 직접 `WriteWithoutResponse()`를 호출하지 마세요. 외부 패키지(예: `cmd/`)는 `ble.Client`의 공개 메서드(`SetTemp`, `PowerOn` 등)를 통해 쓰기를 수행합니다.
+  - macOS(darwin): `c.Write()` — write-with-response (`go/pkg/ble/write_darwin.go`)
+  - Linux: `c.WriteWithoutResponse()` — tinygo bluetooth 제약으로 인한 예외 (`go/pkg/ble/write_linux.go`)
 - **보안**: 하드코딩된 시크릿 없음, 적절한 입력 검증
 
 ## 상표 정책

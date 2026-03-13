@@ -402,7 +402,9 @@ func connect() (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid cached device_gid: %w", err)
 		}
-		fmt.Printf("Using cached device GID: %s\n", cachedConfig.DeviceGid)
+		if debug {
+			fmt.Fprintf(os.Stderr, "Using cached device GID: %s\n", cachedConfig.DeviceGid)
+		}
 	} else {
 		return nil, fmt.Errorf("no device GID specified. Run 'hotwatermat-ble setup' to pair, or set HOTWATERMAT_DEVICE_GID / --device-gid")
 	}

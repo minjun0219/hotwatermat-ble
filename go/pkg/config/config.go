@@ -76,7 +76,7 @@ func Save(cfg *DeviceConfig) error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 	path := filepath.Join(dir, configFile)
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // Delete는 캐시된 설정 파일을 삭제합니다.

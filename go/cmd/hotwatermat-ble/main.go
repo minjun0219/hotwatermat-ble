@@ -181,7 +181,7 @@ var setupCmd = &cobra.Command{
 			return fmt.Errorf("failed to load existing config: %w", err)
 		}
 		if existing != nil {
-			fmt.Printf("Existing config found (address: %s, GID: %s)\n", existing.Address, existing.DeviceGid)
+			fmt.Printf("Existing config found (address: %s, GID: %s)\n", existing.Address, maskDeviceGid(existing.DeviceGid))
 			fmt.Print("Overwrite? [y/N]: ")
 			if !scanner.Scan() {
 				if err := scanner.Err(); err != nil {
@@ -281,7 +281,7 @@ var setupCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("pairing failed: %w", err)
 			}
-			fmt.Printf("DeviceGid acquired: %s\n", protocol.FormatDeviceGid(gid))
+			fmt.Printf("DeviceGid acquired: %s\n", maskDeviceGid(protocol.FormatDeviceGid(gid)))
 
 		default:
 			return fmt.Errorf("invalid choice: %s", choice)
@@ -428,6 +428,16 @@ func connect() (*ble.Client, error) {
 	}
 
 	return client, nil
+}
+
+
+// maskDeviceGid는 DeviceGid(인증 키)를 마스킹하여 로그/터미널 노출을 최소화합니다.
+// 앞 2자리 + **** + 뒤 2자리 형태로 표시합니다.
+func maskDeviceGid(gid string) string {
+	if len(gid) <= 4 {
+		return "****"
+	}
+	return gid[:2] + "****" + gid[len(gid)-2:]
 }
 
 func init() {

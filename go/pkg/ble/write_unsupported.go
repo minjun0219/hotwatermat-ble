@@ -1,4 +1,4 @@
-//go:build !darwin && !linux
+//go:build !darwin && !linux && !windows
 
 package ble
 
@@ -17,5 +17,5 @@ import (
 // 지원 플랫폼 추가가 필요하면 write_<platform>.go 파일을 새로 만들고
 // 빌드 태그를 적절히 설정하면 됩니다.
 func writeCharacteristic(c bluetooth.DeviceCharacteristic, data []byte) (int, error) {
-	return 0, fmt.Errorf("BLE write not supported on %s. Supported platforms: macOS (darwin), Linux", runtime.GOOS)
+	return 0, fmt.Errorf("BLE write not supported on %s. Supported platforms: macOS (darwin), Linux, Windows", runtime.GOOS)
 }

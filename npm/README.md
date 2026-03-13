@@ -1,102 +1,77 @@
 # hotwatermat-ble
 
-BLE 온수매트(KDO_HotWaterMat / EQM555) 프로토콜의 JavaScript/TypeScript 구현체입니다.
+BLE 온수매트(KDO_HotWaterMat / EQM555) CLI 및 MCP 서버.
 
-Go 프로토콜 라이브러리를 WASM으로 컴파일하여 브라우저 및 Node.js에서 사용할 수 있습니다.
+이 npm 패키지는 [GitHub Releases](https://github.com/minjun0219/hotwatermat-ble/releases)에서 플랫폼에 맞는 네이티브 바이너리를 자동으로 다운로드합니다.
 
 ## 설치
 
 ```bash
-npm install hotwatermat-ble
+npm install -g hotwatermat-ble
+```
+
+`postinstall` 스크립트가 자동으로 플랫폼에 맞는 바이너리를 다운로드합니다.
+
+### 바이너리 다운로드 건너뛰기
+
+```bash
+HOTWATERMAT_SKIP_BINARY=1 npm install -g hotwatermat-ble
 ```
 
 ## 사용법
 
-```typescript
-import {
-  init,
-  encodeTemp,
-  decodeTemp,
-  buildHeat,
-  buildHandshake,
-  buildPowerOn,
-  buildPowerOff,
-  parseStatus,
-  SIDE_BOTH,
-  SIDE_LEFT,
-  SIDE_RIGHT
-} from 'hotwatermat-ble';
+### CLI
 
-// WASM 초기화 (최초 1회)
-await init();
-
-// 온도 인코딩/디코딩
-const encoded = encodeTemp(35.0);   // 163
-const decoded = decodeTemp(163);     // 35.0
-
-// 온도 설정 패킷 생성
-const packet = buildHeat(SIDE_BOTH, 0x21, 0x1C, encoded, encoded);
-// → Uint8Array(20) — BLE로 전송할 패킷
-
-// 핸드쉐이크 패킷 생성
-const handshake = buildHandshake('13CE3CC53E5A');
-
-// 전원 제어
-const powerOnPkt = buildPowerOn(0x21, 0x1C);
-const powerOffPkt = buildPowerOff(0x21, 0x1C);
-
-// 상태 파싱 (BLE에서 수신한 20바이트 패킷)
-const status = parseStatus(statusPacket);
-console.log(status);
-// {
-//   mode: 1,
-//   modeName: "HEAT",
-//   leftCurrent: 33.0,
-//   rightCurrent: 30.0,
-//   leftTarget: 35.0,
-//   rightTarget: 35.0,
-//   waterLevel: 3,
-//   poweredOff: false
-// }
+```bash
+hotwatermat-ble --help
+hotwatermat-ble scan
+hotwatermat-ble status
+hotwatermat-ble temp --left 36 --right 36
+hotwatermat-ble on
+hotwatermat-ble off
 ```
 
-## API
+### MCP 서버
 
-### `init(): Promise<void>`
-WASM 모듈을 로드합니다. 다른 함수 호출 전에 반드시 실행해야 합니다.
+```bash
+hotwatermat-ble-mcp
+```
 
-### `encodeTemp(temp: number): number`
-온도(°C)를 프로토콜 바이트로 인코딩합니다. 범위: 28.0~48.0°C, 0.5°C 단위.
+#### Claude Desktop 설정
 
-### `decodeTemp(byte: number): number`
-프로토콜 바이트를 온도(°C)로 디코딩합니다.
+```json
+{
+  "mcpServers": {
+    "hotwatermat-ble": {
+      "command": "npx",
+      "args": ["-y", "--package", "hotwatermat-ble", "hotwatermat-ble-mcp"],
+      "env": {
+        "HOTWATERMAT_DEVICE_GID": "your-device-gid"
+      }
+    }
+  }
+}
+```
 
-### `buildHeat(side, leftCur, rightCur, leftTarget, rightTarget): Uint8Array`
-온도 설정 패킷(20바이트)을 생성합니다.
+## 지원 플랫폼
 
-### `buildHandshake(deviceGid?: string): Uint8Array`
-인증 핸드쉐이크 패킷을 생성합니다.
+| OS    | 아키텍처 |
+|-------|---------|
+| macOS | x64, arm64 |
+| Linux | x64 |
 
-### `buildPowerOn(leftCur, rightCur): Uint8Array`
-전원 켜기 패킷을 생성합니다.
+> Windows는 현재 미지원입니다. 소스에서 직접 빌드하세요.
 
-### `buildPowerOff(leftCur, rightCur): Uint8Array`
-전원 끄기 패킷을 생성합니다.
+## 소스에서 빌드
 
-### `parseStatus(packet: Uint8Array): Status`
-20바이트 상태 패킷을 파싱합니다.
+지원되지 않는 플랫폼이거나 직접 빌드하려면:
 
-### 상수
-
-| 상수 | 값 | 설명 |
-|------|---|------|
-| `SIDE_LEFT` | `0x01` | 왼쪽만 |
-| `SIDE_RIGHT` | `0x02` | 오른쪽만 |
-| `SIDE_BOTH` | `0x03` | 양쪽 |
-
-## 프로토콜
-
-전체 BLE 프로토콜 사양: [PROTOCOL.md](https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md)
+```bash
+git clone https://github.com/minjun0219/hotwatermat-ble.git
+cd hotwatermat-ble/go
+go build -o hotwatermat-ble ./cmd/hotwatermat-ble
+go build -o hotwatermat-ble-mcp ./cmd/mcp-server
+```
 
 ## 라이선스
 

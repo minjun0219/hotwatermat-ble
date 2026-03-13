@@ -2,12 +2,15 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/minjun0219/hotwatermat-ble/pkg/ble"
+	"github.com/minjun0219/hotwatermat-ble/pkg/config"
 	"github.com/minjun0219/hotwatermat-ble/pkg/protocol"
 	"github.com/spf13/cobra"
 )
@@ -15,11 +18,12 @@ import (
 const scanTimeout = 5 * time.Second
 
 var (
-	address   string
-	deviceGid string
-	debug     bool
-	leftTemp  float64
-	rightTemp float64
+	address    string
+	deviceGid  string
+	debug      bool
+	leftTemp   float64
+	rightTemp  float64
+	resetSetup bool
 )
 
 func main() {
@@ -151,10 +155,184 @@ var offCmd = &cobra.Command{
 	},
 }
 
+var setupCmd = &cobra.Command{
+	Use:   "setup",
+	Short: "Interactive setup: scan, pair, and save device config",
+	Long:  "Scans for devices, pairs to acquire DeviceGid, verifies connection, and saves config to ~/.config/hotwatermat-ble/device.json",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// --reset 처리
+		if resetSetup {
+			if err := config.Delete(); err != nil {
+				return fmt.Errorf("failed to delete config: %w", err)
+			}
+			path, _ := config.ConfigPath()
+			fmt.Printf("Config deleted: %s\n", path)
+			return nil
+		}
+
+		scanner := bufio.NewScanner(os.Stdin)
+
+		// 기존 설정 확인
+		existing, _ := config.Load()
+		if existing != nil {
+			fmt.Printf("Existing config found (address: %s, GID: %s)\n", existing.Address, existing.DeviceGid)
+			fmt.Print("Overwrite? [y/N]: ")
+			if scanner.Scan() {
+				answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+				if answer != "y" && answer != "yes" {
+					fmt.Println("Setup cancelled.")
+					return nil
+				}
+			}
+		}
+
+		// [1/4] BLE 스캔
+		fmt.Println("\n[1/4] Scanning for devices...")
+		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
+		if err != nil {
+			return fmt.Errorf("scan failed (check BLE permissions): %w", err)
+		}
+
+		// 중복 제거 (RSSI 기준)
+		best := make(map[string]ble.ScanResult)
+		for _, r := range results {
+			if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
+				best[r.Address] = r
+			}
+		}
+		var unique []ble.ScanResult
+		for _, r := range best {
+			unique = append(unique, r)
+		}
+		sort.Slice(unique, func(i, j int) bool {
+			if unique[i].RSSI != unique[j].RSSI {
+				return unique[i].RSSI > unique[j].RSSI
+			}
+			return unique[i].Address < unique[j].Address
+		})
+
+		if len(unique) == 0 {
+			return fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
+		}
+
+		// 기기 선택
+		var selectedAddr string
+		if len(unique) == 1 {
+			selectedAddr = unique[0].Address
+			fmt.Printf("Found device: %s (RSSI: %d)\n", selectedAddr, unique[0].RSSI)
+		} else {
+			fmt.Printf("Found %d devices:\n", len(unique))
+			for i, r := range unique {
+				fmt.Printf("  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
+			}
+			fmt.Print("Select device number: ")
+			if !scanner.Scan() {
+				return fmt.Errorf("no input received")
+			}
+			var idx int
+			if _, err := fmt.Sscanf(scanner.Text(), "%d", &idx); err != nil || idx < 1 || idx > len(unique) {
+				return fmt.Errorf("invalid selection: %s", scanner.Text())
+			}
+			selectedAddr = unique[idx-1].Address
+		}
+
+		// [2/4] DeviceGid 취득 방식 선택
+		fmt.Println("\n[2/4] DeviceGid acquisition")
+		fmt.Println("  [1] Enter existing GID (from official app)")
+		fmt.Println("  [2] New pairing (mat must be in pairing mode)")
+		fmt.Print("Select [1/2]: ")
+
+		if !scanner.Scan() {
+			return fmt.Errorf("no input received")
+		}
+		choice := strings.TrimSpace(scanner.Text())
+
+		var gid [6]byte
+		switch choice {
+		case "1":
+			// 사용자가 직접 GID 입력
+			fmt.Print("Enter DeviceGid (12-char hex, e.g. 13CE3CC53E5A): ")
+			if !scanner.Scan() {
+				return fmt.Errorf("no input received")
+			}
+			gidHex := strings.TrimSpace(scanner.Text())
+			gid, err = protocol.ParseDeviceGidHex(gidHex)
+			if err != nil {
+				return fmt.Errorf("invalid GID: %w", err)
+			}
+
+		case "2":
+			// BLE 페어링으로 GID 자동 취득
+			fmt.Println("Starting pairing... (make sure mat is in pairing mode)")
+			pairClient := ble.NewClient(selectedAddr, [6]byte{}, debug)
+			gid, err = pairClient.Pair()
+			if err != nil {
+				return fmt.Errorf("pairing failed: %w", err)
+			}
+			pairClient.Disconnect()
+			fmt.Printf("DeviceGid acquired: %s\n", protocol.FormatDeviceGid(gid))
+
+		default:
+			return fmt.Errorf("invalid choice: %s", choice)
+		}
+
+		// [3/4] 연결 검증
+		fmt.Println("\n[3/4] Verifying connection...")
+		client := ble.NewClient(selectedAddr, gid, debug)
+		if err := client.Connect(); err != nil {
+			return fmt.Errorf("verification failed: %w", err)
+		}
+
+		st, err := client.GetStatus(5 * time.Second)
+		client.Disconnect()
+		if err != nil {
+			return fmt.Errorf("status check failed: %w", err)
+		}
+
+		if st.PoweredOff {
+			fmt.Println("Connection verified! (mat is powered off)")
+		} else {
+			fmt.Printf("Connection verified! Mode: %s, Left: %.1f°C, Right: %.1f°C\n",
+				st.ModeName, st.LeftCurrent, st.RightCurrent)
+		}
+
+		// [4/4] 설정 저장
+		fmt.Println("\n[4/4] Saving config...")
+		cfg := &config.DeviceConfig{
+			Address:   selectedAddr,
+			DeviceGid: protocol.FormatDeviceGid(gid),
+		}
+		if err := config.Save(cfg); err != nil {
+			return fmt.Errorf("save config failed: %w", err)
+		}
+		path, _ := config.ConfigPath()
+		fmt.Printf("Config saved to: %s\n", path)
+		fmt.Println("\nSetup complete! You can now use commands without --address and --device-gid.")
+		return nil
+	},
+}
+
 func connect() (*ble.Client, error) {
+	// Address 해석: flag → env → config → auto-scan
 	if address == "" {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
+
+	// config 파일에서 캐시된 설정 로드
+	var cachedConfig *config.DeviceConfig
+	if address == "" || deviceGid == "" {
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: config load failed: %v\n", err)
+		}
+		cachedConfig = cfg
+	}
+
+	if address == "" && cachedConfig != nil && cachedConfig.Address != "" {
+		address = cachedConfig.Address
+		fmt.Printf("Using cached address: %s\n", address)
+	}
+
 	if address == "" {
 		// Auto-scan for device
 		fmt.Println("No address specified, scanning for devices...")
@@ -195,6 +373,7 @@ func connect() (*ble.Client, error) {
 		}
 	}
 
+	// GID 해석: flag → env → config → error
 	var gid [6]byte
 	if deviceGid != "" {
 		var err error
@@ -208,14 +387,30 @@ func connect() (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
 		}
+	} else if cachedConfig != nil && cachedConfig.DeviceGid != "" {
+		var err error
+		gid, err = protocol.ParseDeviceGidHex(cachedConfig.DeviceGid)
+		if err != nil {
+			return nil, fmt.Errorf("invalid cached device_gid: %w", err)
+		}
+		fmt.Printf("Using cached device GID: %s\n", cachedConfig.DeviceGid)
 	} else {
-		return nil, fmt.Errorf("no device GID specified. Set HOTWATERMAT_DEVICE_GID or use --device-gid flag")
+		return nil, fmt.Errorf("no device GID specified. Run 'hotwatermat-ble setup' to pair, or set HOTWATERMAT_DEVICE_GID / --device-gid")
 	}
 
 	client := ble.NewClient(address, gid, debug)
 	if err := client.Connect(); err != nil {
 		return nil, err
 	}
+
+	// 캐시가 없었으면 자동 저장
+	if cachedConfig == nil {
+		_ = config.Save(&config.DeviceConfig{
+			Address:   address,
+			DeviceGid: protocol.FormatDeviceGid(gid),
+		})
+	}
+
 	return client, nil
 }
 
@@ -227,5 +422,7 @@ func init() {
 	tempCmd.Flags().Float64Var(&leftTemp, "left", 0, "Left side target temperature (28.0-48.0)")
 	tempCmd.Flags().Float64Var(&rightTemp, "right", 0, "Right side target temperature (28.0-48.0)")
 
-	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd)
+	setupCmd.Flags().BoolVar(&resetSetup, "reset", false, "Clear cached device config")
+
+	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)
 }

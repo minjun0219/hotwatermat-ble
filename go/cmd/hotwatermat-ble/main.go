@@ -339,7 +339,7 @@ func connect() (*ble.Client, error) {
 
 	if address == "" && cachedConfig != nil && cachedConfig.Address != "" {
 		address = cachedConfig.Address
-		fmt.Printf("Using cached address: %s\n", address)
+		fmt.Fprintf(os.Stderr, "Using cached address: %s\n", address)
 	}
 
 	if address == "" {

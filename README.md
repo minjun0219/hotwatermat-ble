@@ -55,8 +55,6 @@ sudo mv hotwatermat-ble /usr/local/bin/
 xattr -d com.apple.quarantine hotwatermat-ble
 ```
 
-또는 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 허용"을 클릭하세요.
-
 **2. Bluetooth 권한:**
 
 BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:

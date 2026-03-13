@@ -53,7 +53,7 @@ macOS는 인터넷에서 다운로드한 파일에 `com.apple.quarantine` 격리
 Apple 공증이 없는 바이너리는 이 속성 때문에 실행이 차단되므로, `xattr -d` 명령어로 해당 속성을 제거해야 합니다:
 
 ```bash
-xattr -d com.apple.quarantine hotwatermat-ble
+sudo xattr -d com.apple.quarantine /usr/local/bin/hotwatermat-ble
 ```
 
 **2. Bluetooth 권한:**

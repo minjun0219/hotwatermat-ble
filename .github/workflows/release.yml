@@ -119,7 +119,7 @@ jobs:
 
   publish:
     needs: [release-darwin, release-linux, release-windows]
-    if: always() && (needs.release-darwin.result == 'success' || needs.release-linux.result == 'success')
+    if: always() && (needs.release-darwin.result == 'success' || needs.release-linux.result == 'success' || needs.release-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -132,7 +132,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.tar.gz *.zip 2>/dev/null > checksums.txt
+          shopt -s nullglob
+          sha256sum *.tar.gz *.zip > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

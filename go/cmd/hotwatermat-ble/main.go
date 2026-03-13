@@ -287,6 +287,7 @@ var setupCmd = &cobra.Command{
 		// [3/4] 연결 검증
 		fmt.Println("\n[3/4] Verifying connection...")
 		client := ble.NewClient(selectedAddr, gid, debug)
+		defer client.Disconnect()
 		if err := client.Connect(); err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}

@@ -41,7 +41,7 @@ hotwatermat-ble-mcp
   "mcpServers": {
     "hotwatermat-ble": {
       "command": "npx",
-      "args": ["-y", "hotwatermat-ble-mcp"]
+      "args": ["-y", "--package", "hotwatermat-ble", "hotwatermat-ble-mcp"]
     }
   }
 }
@@ -49,11 +49,10 @@ hotwatermat-ble-mcp
 
 ## Supported Platforms
 
-| OS      | Architecture |
-|---------|-------------|
-| macOS   | x64, arm64  |
-| Linux   | x64, arm64  |
-| Windows | x64, arm64  |
+| OS    | Architecture |
+|-------|-------------|
+| macOS | x64, arm64  |
+| Linux | x64         |
 
 ## Building from source
 

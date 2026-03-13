@@ -284,7 +284,9 @@ func handleToolCall(params callToolParams) callToolResult {
 	// 인자를 map으로 파싱 (인자가 없을 수도 있음)
 	var args map[string]any
 	if len(params.Arguments) > 0 {
-		json.Unmarshal(params.Arguments, &args)
+		if err := json.Unmarshal(params.Arguments, &args); err != nil {
+			return errorResult(fmt.Sprintf("Invalid arguments JSON: %v", err))
+		}
 	}
 
 	switch params.Name {

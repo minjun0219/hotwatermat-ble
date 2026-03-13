@@ -71,7 +71,15 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		results []ScanResult
 	)
 
+	// 타임아웃 후 스캔 중단하는 고루틴 — Scan() 호출 전에 시작해야
+	// Scan()이 블로킹되는 경우에도 타임아웃이 정상 동작함
+	go func() {
+		time.Sleep(timeout)
+		adapter.StopScan()
+	}()
+
 	// BLE 스캔 시작 — 콜백은 기기가 발견될 때마다 호출됨
+	// StopScan() 호출 시 Scan()이 반환됨
 	err := adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		name := result.LocalName()
 		// 이름 필터가 설정된 경우, 일치하지 않는 기기는 무시
@@ -86,19 +94,11 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		})
 		mu.Unlock()
 	})
-	if err != nil {
-		// 스캔 오류는 타임아웃 고루틴에 의해 중단될 때 발생할 수 있으므로 무시
-		_ = err
+	// StopScan()에 의한 중단 시 에러가 반환될 수 있으므로, 결과가 있으면 무시
+	if err != nil && len(results) == 0 {
+		return nil, fmt.Errorf("scan: %w", err)
 	}
 
-	// 타임아웃 후 스캔 중단하는 고루틴 실행
-	go func() {
-		time.Sleep(timeout)
-		adapter.StopScan()
-	}()
-
-	// 타임아웃 + 여유 시간만큼 대기 후 결과 반환
-	time.Sleep(timeout + 100*time.Millisecond)
 	return results, nil
 }
 
@@ -294,7 +294,7 @@ func (c *Client) connectBLE() error {
 			// 페어링 응답 — DeviceGid 추출
 			gid, err := protocol.ParseDeviceGid(buf)
 			if err == nil {
-				c.debugf("Pairing response received, GID: %s", protocol.FormatDeviceGid(gid))
+				c.debugf("Pairing response received")
 				select {
 				case c.pairDone <- gid:
 				default:
@@ -330,7 +330,7 @@ func (c *Client) Connect() error {
 
 	// DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
-	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
+	c.debugf("Sending handshake (GID masked)")
 	_, err := writeCharacteristic(c.cmdChar, handshake[:])
 	if err != nil {
 		return fmt.Errorf("write handshake: %w", err)
@@ -372,7 +372,7 @@ func (c *Client) Pair() ([6]byte, error) {
 	// B2F1 type=0x01 페어링 응답 대기
 	select {
 	case gid := <-c.pairDone:
-		c.debugf("Pairing complete, GID: %s", protocol.FormatDeviceGid(gid))
+		c.debugf("Pairing complete")
 		c.deviceGid = gid
 		c.connected = true
 		return gid, nil

@@ -450,6 +450,7 @@ type Status struct {
 //   - 패킷 길이가 20바이트 이상인지 확인
 //   - byte[0]이 STX(0xB2)인지 확인
 //   - byte[1]이 DirMatToApp(0x00)인지 확인 (매트→앱 방향)
+//   - byte[19] 체크섬이 올바른지 확인
 //
 // 전원 꺼짐 판단: Mode가 POWER(0x06)이고 byte[10], byte[11]이 모두 0이면 전원 OFF로 판단합니다.
 func ParseStatus(data []byte) (*Status, error) {
@@ -461,6 +462,10 @@ func ParseStatus(data []byte) (*Status, error) {
 	}
 	if data[1] != DirMatToApp {
 		return nil, fmt.Errorf("not a STATUS packet (direction=0x%02X)", data[1])
+	}
+	// 체크섬 검증 — 손상된 패킷 수락 방지
+	if expected := CalcChecksum(data); data[19] != expected {
+		return nil, fmt.Errorf("checksum mismatch: got 0x%02X, expected 0x%02X", data[19], expected)
 	}
 
 	// 모드 이름 조회 (알 수 없는 모드는 "UNKNOWN(0xXX)" 형식)
@@ -529,6 +534,10 @@ func ParseAuthResponse(data []byte) (byte, error) {
 	}
 	if data[1] != DirAuth {
 		return 0, errors.New("not an auth response")
+	}
+	// 체크섬 검증 — 손상된 패킷 수락 방지
+	if expected := CalcChecksum(data); data[19] != expected {
+		return 0, fmt.Errorf("checksum mismatch: got 0x%02X, expected 0x%02X", data[19], expected)
 	}
 	// byte[2]가 인증 타입을 나타냄
 	return data[2], nil

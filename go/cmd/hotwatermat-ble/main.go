@@ -180,12 +180,17 @@ var setupCmd = &cobra.Command{
 		if existing != nil {
 			fmt.Printf("Existing config found (address: %s, GID: %s)\n", existing.Address, existing.DeviceGid)
 			fmt.Print("Overwrite? [y/N]: ")
-			if scanner.Scan() {
-				answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
-				if answer != "y" && answer != "yes" {
-					fmt.Println("Setup cancelled.")
-					return nil
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return fmt.Errorf("failed to read input: %w", err)
 				}
+				fmt.Println("Setup cancelled.")
+				return nil
+			}
+			answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+			if answer != "y" && answer != "yes" {
+				fmt.Println("Setup cancelled.")
+				return nil
 			}
 		}
 

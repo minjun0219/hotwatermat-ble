@@ -247,6 +247,11 @@ func (c *Client) Connect() error {
 // Pair은 초기 페어링을 수행하여 기기의 DeviceGid를 획득합니다.
 // deviceGid가 빈 값인 Client에서 호출해야 합니다.
 func (c *Client) Pair() ([6]byte, error) {
+	var zeroGid [6]byte
+	if c.deviceGid != zeroGid {
+		return [6]byte{}, errors.New("Pair must be called on a Client with an empty DeviceGid")
+	}
+
 	if err := c.connectBLE(); err != nil {
 		return [6]byte{}, err
 	}

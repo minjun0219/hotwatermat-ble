@@ -326,14 +326,14 @@ func connect() (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 
-	// config 파일에서 캐시된 설정 로드
+	// config 파일에서 캐시된 설정 로드 (항상 시도)
 	var cachedConfig *config.DeviceConfig
-	if address == "" || deviceGid == "" {
-		cfg, err := config.Load()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: config load failed: %v\n", err)
-		}
-		cachedConfig = cfg
+	var cachedConfigErr error
+	cachedConfig, cachedConfigErr = config.Load()
+	if cachedConfigErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: config load failed: %v\n", cachedConfigErr)
+	}
+
 	}
 
 	if address == "" && cachedConfig != nil && cachedConfig.Address != "" {
@@ -411,8 +411,8 @@ func connect() (*ble.Client, error) {
 		return nil, err
 	}
 
-	// 캐시가 없었으면 자동 저장
-	if cachedConfig == nil {
+	// config 파일이 존재하지 않았으면 자동 저장
+	if os.IsNotExist(cachedConfigErr) {
 		_ = config.Save(&config.DeviceConfig{
 			Address:   address,
 			DeviceGid: protocol.FormatDeviceGid(gid),

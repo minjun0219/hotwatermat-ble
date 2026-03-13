@@ -1,62 +1,70 @@
 # hotwatermat-ble
 
-CLI and MCP server for BLE-controlled heated mattress pads (KDO_HotWaterMat / EQM555).
+BLE 온수매트(KDO_HotWaterMat / EQM555) CLI 및 MCP 서버.
 
-This npm package downloads pre-built native binaries from [GitHub Releases](https://github.com/minjun0219/hotwatermat-ble/releases).
+이 npm 패키지는 [GitHub Releases](https://github.com/minjun0219/hotwatermat-ble/releases)에서 플랫폼에 맞는 네이티브 바이너리를 자동으로 다운로드합니다.
 
-## Installation
+## 설치
 
 ```bash
 npm install -g hotwatermat-ble
 ```
 
-The `postinstall` script automatically downloads the correct binary for your platform.
+`postinstall` 스크립트가 자동으로 플랫폼에 맞는 바이너리를 다운로드합니다.
 
-### Skip binary download
+### 바이너리 다운로드 건너뛰기
 
 ```bash
 HOTWATERMAT_SKIP_BINARY=1 npm install -g hotwatermat-ble
 ```
 
-## Usage
+## 사용법
 
 ### CLI
 
 ```bash
 hotwatermat-ble --help
+hotwatermat-ble scan
 hotwatermat-ble status
-hotwatermat-ble set --temp 36 --side both
+hotwatermat-ble temp --left 36 --right 36
+hotwatermat-ble on
+hotwatermat-ble off
 ```
 
-### MCP Server
+### MCP 서버
 
 ```bash
 hotwatermat-ble-mcp
 ```
 
-#### Claude Desktop configuration
+#### Claude Desktop 설정
 
 ```json
 {
   "mcpServers": {
     "hotwatermat-ble": {
       "command": "npx",
-      "args": ["-y", "--package", "hotwatermat-ble", "hotwatermat-ble-mcp"]
+      "args": ["-y", "--package", "hotwatermat-ble", "hotwatermat-ble-mcp"],
+      "env": {
+        "HOTWATERMAT_DEVICE_GID": "your-device-gid"
+      }
     }
   }
 }
 ```
 
-## Supported Platforms
+## 지원 플랫폼
 
-| OS    | Architecture |
-|-------|-------------|
-| macOS | x64, arm64  |
-| Linux | x64         |
+| OS    | 아키텍처 |
+|-------|---------|
+| macOS | x64, arm64 |
+| Linux | x64 |
 
-## Building from source
+> Windows는 현재 미지원입니다. 소스에서 직접 빌드하세요.
 
-If your platform is not supported or you prefer building from source:
+## 소스에서 빌드
+
+지원되지 않는 플랫폼이거나 직접 빌드하려면:
 
 ```bash
 git clone https://github.com/minjun0219/hotwatermat-ble.git
@@ -65,6 +73,6 @@ go build -o hotwatermat-ble ./cmd/hotwatermat-ble
 go build -o hotwatermat-ble-mcp ./cmd/mcp-server
 ```
 
-## License
+## 라이선스
 
 MIT

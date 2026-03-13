@@ -62,17 +62,18 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 
 // Client manages a BLE connection to the hot water mat.
 type Client struct {
-	address    string
-	deviceGid  [6]byte
-	device     bluetooth.Device
-	statusChar bluetooth.DeviceCharacteristic
-	cmdChar    bluetooth.DeviceCharacteristic
-	lastStatus *protocol.Status
-	mu         sync.Mutex
-	connected  bool
-	authDone   chan struct{}
-	pairDone   chan [6]byte // 페어링 완료 시 GID 전달
-	debug      bool
+	address         string
+	deviceGid       [6]byte
+	device          bluetooth.Device
+	statusChar      bluetooth.DeviceCharacteristic
+	cmdChar         bluetooth.DeviceCharacteristic
+	lastStatus      *protocol.Status
+	mu              sync.Mutex
+	deviceConnected bool // BLE 물리 연결 완료 (connectBLE 성공 후)
+	connected       bool // 인증/페어링까지 완료
+	authDone        chan struct{}
+	pairDone        chan [6]byte // 페어링 완료 시 GID 전달
+	debug           bool
 }
 
 // NewClient creates a new BLE client.
@@ -133,6 +134,7 @@ func (c *Client) connectBLE() error {
 		return fmt.Errorf("connect: %w", err)
 	}
 	c.device = device
+	c.deviceConnected = true
 
 	c.debugf("Discovering services...")
 	services, err := device.DiscoverServices([]bluetooth.UUID{uuid})
@@ -278,10 +280,11 @@ func (c *Client) Pair() ([6]byte, error) {
 
 // Disconnect closes the BLE connection.
 func (c *Client) Disconnect() error {
-	if !c.connected {
+	if !c.deviceConnected {
 		return nil
 	}
 	c.connected = false
+	c.deviceConnected = false
 	return c.device.Disconnect()
 }
 

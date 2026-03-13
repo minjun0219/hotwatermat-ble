@@ -165,8 +165,11 @@ var setupCmd = &cobra.Command{
 			if err := config.Delete(); err != nil {
 				return fmt.Errorf("failed to delete config: %w", err)
 			}
-			path, _ := config.ConfigPath()
-			fmt.Printf("Config deleted: %s\n", path)
+			if path, pathErr := config.ConfigPath(); pathErr == nil {
+				fmt.Printf("Config deleted: %s\n", path)
+			} else {
+				fmt.Println("Config deleted.")
+			}
 			return nil
 		}
 
@@ -273,8 +276,8 @@ var setupCmd = &cobra.Command{
 			// BLE 페어링으로 GID 자동 취득
 			fmt.Println("Starting pairing... (make sure mat is in pairing mode)")
 			pairClient := ble.NewClient(selectedAddr, [6]byte{}, debug)
-			defer pairClient.Disconnect()
 			gid, err = pairClient.Pair()
+			pairClient.Disconnect() // 검증 전에 즉시 연결 해제 (기기가 단일 연결만 지원할 수 있음)
 			if err != nil {
 				return fmt.Errorf("pairing failed: %w", err)
 			}
@@ -291,7 +294,6 @@ var setupCmd = &cobra.Command{
 		if err := client.Connect(); err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
-		defer client.Disconnect()
 
 		st, err := client.GetStatus(5 * time.Second)
 		if err != nil {
@@ -314,8 +316,11 @@ var setupCmd = &cobra.Command{
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("save config failed: %w", err)
 		}
-		path, _ := config.ConfigPath()
-		fmt.Printf("Config saved to: %s\n", path)
+		if path, pathErr := config.ConfigPath(); pathErr == nil {
+			fmt.Printf("Config saved to: %s\n", path)
+		} else {
+			fmt.Println("Config saved.")
+		}
 		fmt.Println("\nSetup complete! You can now use commands without --address and --device-gid.")
 		return nil
 	},
@@ -333,8 +338,6 @@ func connect() (*ble.Client, error) {
 	cachedConfig, cachedConfigErr = config.Load()
 	if cachedConfigErr != nil {
 		fmt.Fprintf(os.Stderr, "Warning: config load failed: %v\n", cachedConfigErr)
-	}
-
 	}
 
 	if address == "" && cachedConfig != nil && cachedConfig.Address != "" {
@@ -415,11 +418,13 @@ func connect() (*ble.Client, error) {
 	}
 
 	// config 파일이 존재하지 않았으면 자동 저장
-	if os.IsNotExist(cachedConfigErr) {
-		_ = config.Save(&config.DeviceConfig{
+	if cachedConfig == nil && cachedConfigErr == nil {
+		if saveErr := config.Save(&config.DeviceConfig{
 			Address:   address,
 			DeviceGid: protocol.FormatDeviceGid(gid),
-		})
+		}); saveErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to auto-save config: %v\n", saveErr)
+		}
 	}
 
 	return client, nil

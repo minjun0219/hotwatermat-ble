@@ -1,4 +1,25 @@
-// Package ble provides a BLE client for connecting to the KDO_HotWaterMat device.
+// Package ble는 KDO_HotWaterMat(온수매트) 기기에 BLE(Bluetooth Low Energy)로 연결하는 클라이언트를 제공합니다.
+//
+// 이 패키지는 tinygo.org/x/bluetooth 라이브러리를 사용하여 실제 BLE 하드웨어와 통신합니다.
+// macOS(CoreBluetooth)와 Linux(BlueZ/D-Bus)를 지원하며, 플랫폼별 차이는
+// write_darwin.go, write_linux.go, write_unsupported.go 파일에서 처리합니다.
+//
+// 주요 기능:
+//   - BLE 기기 스캔 (Scan)
+//   - 연결 및 인증 (Connect)
+//   - 상태 조회 (GetStatus)
+//   - 온도 설정 (SetTemp)
+//   - 전원 제어 (PowerOn, PowerOff)
+//
+// 연결 및 인증 흐름:
+//  1. BLE 어댑터 활성화
+//  2. 기기 스캔 및 주소 매칭
+//  3. GATT 서비스/특성 탐색
+//  4. CHAR1(상태 알림) 구독
+//  5. CHAR2(인증 알림) 구독
+//  6. CHAR2로 핸드셰이크 패킷 전송
+//  7. CHAR2에서 B2F1 인증 완료(authType=0x02) 알림 수신
+//  8. 인증 완료 → 명령 전송 가능
 package ble
 
 import (
@@ -11,29 +32,49 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
+// adapter는 시스템의 기본 BLE 어댑터입니다.
+// tinygo bluetooth 라이브러리가 제공하는 싱글턴 어댑터를 사용합니다.
 var adapter = bluetooth.DefaultAdapter
 
-// ScanResult holds a discovered BLE device.
+// ScanResult는 BLE 스캔으로 발견된 기기 정보를 담는 구조체입니다.
 type ScanResult struct {
+	// Address는 BLE 기기의 MAC 주소입니다 (예: "AA:BB:CC:DD:EE:FF").
 	Address string
-	Name    string
-	RSSI    int16
+
+	// Name은 기기가 광고(advertise)하는 이름입니다 (예: "KDO_HotWaterMat").
+	Name string
+
+	// RSSI는 수신 신호 강도 지표입니다.
+	// 값이 클수록(0에 가까울수록) 신호가 강합니다. 일반적으로 -30(매우 강함) ~ -100(매우 약함).
+	RSSI int16
 }
 
-// Scan discovers BLE devices for the given duration.
-// If nameFilter is non-empty, only devices matching that name are returned.
+// Scan은 주어진 시간 동안 BLE 기기를 검색합니다.
+//
+// 매개변수:
+//   - timeout: 스캔 지속 시간 (예: 5 * time.Second)
+//   - nameFilter: 이 이름과 일치하는 기기만 반환. 빈 문자열이면 모든 기기 반환.
+//
+// 반환값:
+//   - 발견된 기기 목록 (중복 포함 가능)
+//   - BLE 어댑터 활성화 실패 시 오류
+//
+// 주의: 같은 기기가 여러 번 광고하면 중복 결과가 포함될 수 있습니다.
+// 중복 제거는 호출자 측에서 처리해야 합니다.
 func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 	if err := adapter.Enable(); err != nil {
 		return nil, wrapBLEEnableError(err)
 	}
 
 	var (
-		mu      sync.Mutex
+		mu      sync.Mutex   // results 슬라이스 동시 접근 보호용 뮤텍스
 		results []ScanResult
 	)
 
+	// BLE 스캔 시작 — 콜백은 기기가 발견될 때마다 호출됨
 	err := adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		name := result.LocalName()
+		// 이름 필터가 설정된 경우, 일치하지 않는 기기는 무시
 		if nameFilter != "" && name != nameFilter {
 			return
 		}
@@ -46,36 +87,75 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		mu.Unlock()
 	})
 	if err != nil {
-		// Scan will be stopped by the timeout goroutine
+		// 스캔 오류는 타임아웃 고루틴에 의해 중단될 때 발생할 수 있으므로 무시
 		_ = err
 	}
 
-	// Stop scanning after timeout
+	// 타임아웃 후 스캔 중단하는 고루틴 실행
 	go func() {
 		time.Sleep(timeout)
 		adapter.StopScan()
 	}()
 
+	// 타임아웃 + 여유 시간만큼 대기 후 결과 반환
 	time.Sleep(timeout + 100*time.Millisecond)
 	return results, nil
 }
 
-// Client manages a BLE connection to the hot water mat.
+// Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
+//
+// 사용 순서:
+//  1. NewClient로 클라이언트 생성
+//  2. Connect로 연결 및 인증
+//  3. GetStatus, SetTemp, PowerOn, PowerOff 등으로 기기 제어
+//  4. Disconnect로 연결 해제
 type Client struct {
-	address    string
-	deviceGid  [6]byte
-	device     bluetooth.Device
+	// address는 연결할 BLE 기기의 MAC 주소입니다.
+	address string
+
+	// deviceGid는 인증에 사용되는 6바이트 기기 고유 키입니다.
+	// 최초 페어링 시 매트로부터 수신하며, 이후 재연결 시 사용합니다.
+	deviceGid [6]byte
+
+	// device는 연결된 BLE 기기 객체입니다.
+	device bluetooth.Device
+
+	// statusChar는 CHAR1(0100dd) — STATUS 알림 수신용 BLE 특성입니다.
+	// 매트의 현재 상태(온도, 모드, 수위 등)를 주기적으로 알려줍니다.
 	statusChar bluetooth.DeviceCharacteristic
-	cmdChar    bluetooth.DeviceCharacteristic
+
+	// cmdChar는 CHAR2(0200dd) — 명령 쓰기 + 인증 응답용 BLE 특성입니다.
+	// 핸드셰이크, 온도 설정, 전원 명령 등 모든 쓰기가 이 특성을 통해 이루어집니다.
+	cmdChar bluetooth.DeviceCharacteristic
+
+	// lastStatus는 가장 최근에 수신한 STATUS 데이터입니다.
+	// CHAR1 알림을 통해 자동으로 업데이트됩니다.
 	lastStatus *protocol.Status
-	mu         sync.Mutex
-	connected  bool
-	authDone   chan struct{}
-	pairDone   chan [6]byte // 페어링 완료 시 GID 전달
-	debug      bool
+
+	// mu는 lastStatus 필드의 동시 접근을 보호하는 뮤텍스입니다.
+	mu sync.Mutex
+
+	// connected는 현재 연결 상태를 나타냅니다.
+	connected bool
+
+	// authDone은 인증 완료를 알리는 채널입니다.
+	authDone chan struct{}
+
+	// pairDone은 페어링 완료 시 GID를 전달하는 채널입니다.
+	pairDone chan [6]byte
+
+	// debug는 디버그 로그 출력 여부입니다.
+	debug bool
 }
 
-// NewClient creates a new BLE client.
+// NewClient는 새로운 BLE 클라이언트를 생성합니다.
+//
+// 매개변수:
+//   - address: BLE 기기의 MAC 주소 (예: "AA:BB:CC:DD:EE:FF")
+//   - deviceGid: 인증용 6바이트 기기 키 (ParseDeviceGidHex로 파싱)
+//   - debug: true이면 BLE 패킷 송수신 로그를 콘솔에 출력
+//
+// 주의: 이 함수는 연결을 수행하지 않습니다. Connect()를 별도로 호출해야 합니다.
 func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 	return &Client{
 		address:   address,
@@ -86,6 +166,8 @@ func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 	}
 }
 
+// debugf는 디버그 모드일 때 로그를 출력합니다.
+// 디버그 모드가 아니면 아무것도 출력하지 않습니다.
 func (c *Client) debugf(format string, args ...any) {
 	if c.debug {
 		fmt.Printf("[DEBUG] "+format+"\n", args...)
@@ -94,25 +176,36 @@ func (c *Client) debugf(format string, args ...any) {
 
 // connectBLE는 BLE 연결 + 서비스/특성 검색 + 알림 구독까지 수행합니다.
 // 핸드셰이크는 보내지 않습니다.
+//
+// 과정:
+//  1. BLE 어댑터 활성화
+//  2. 지정된 주소 또는 "KDO_HotWaterMat" 이름으로 기기 스캔 (10초 타임아웃)
+//  3. 기기에 연결
+//  4. 서비스/특성 탐색
+//  5. CHAR1/CHAR2 알림 구독
+//  6. 300ms 대기 (연결 안정화)
 func (c *Client) connectBLE() error {
 	if err := adapter.Enable(); err != nil {
 		return wrapBLEEnableError(err)
 	}
 
+	// 서비스 UUID 파싱
 	uuid, err := bluetooth.ParseUUID(protocol.ServiceUUID)
 	if err != nil {
 		return fmt.Errorf("parse service UUID: %w", err)
 	}
 
+	// 2단계: 기기 스캔 — 주소 또는 이름으로 찾기
 	c.debugf("Scanning for device %s...", c.address)
 
 	var targetAddr bluetooth.Address
-	found := make(chan struct{})
+	found := make(chan struct{}) // 기기를 찾으면 이 채널을 닫음
 
 	err = adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
+		// MAC 주소 일치 또는 기기 이름이 "KDO_HotWaterMat"이면 대상 기기
 		if result.Address.String() == c.address || result.LocalName() == protocol.BLEDeviceName {
 			targetAddr = result.Address
-			a.StopScan()
+			a.StopScan() // 기기를 찾았으므로 스캔 중단
 			close(found)
 		}
 	})
@@ -120,13 +213,16 @@ func (c *Client) connectBLE() error {
 		return fmt.Errorf("scan: %w", err)
 	}
 
+	// 10초 내에 기기를 찾지 못하면 타임아웃
 	select {
 	case <-found:
+		// 기기를 찾음
 	case <-time.After(10 * time.Second):
 		adapter.StopScan()
 		return errors.New("device not found within timeout")
 	}
 
+	// 3단계: BLE 연결 수립
 	c.debugf("Connecting to %s...", targetAddr.String())
 	device, err := adapter.Connect(targetAddr, bluetooth.ConnectionParams{})
 	if err != nil {
@@ -134,6 +230,7 @@ func (c *Client) connectBLE() error {
 	}
 	c.device = device
 
+	// 4단계: GATT 서비스 탐색 — 온수매트 서비스 찾기
 	c.debugf("Discovering services...")
 	services, err := device.DiscoverServices([]bluetooth.UUID{uuid})
 	if err != nil {
@@ -143,6 +240,7 @@ func (c *Client) connectBLE() error {
 		return errors.New("service not found")
 	}
 
+	// 5단계: 특성(Characteristic) 탐색 — CHAR1(상태), CHAR2(명령) 찾기
 	char1UUID, _ := bluetooth.ParseUUID(protocol.Char1UUID)
 	char2UUID, _ := bluetooth.ParseUUID(protocol.Char2UUID)
 
@@ -154,18 +252,19 @@ func (c *Client) connectBLE() error {
 		return errors.New("characteristics not found")
 	}
 
-	// Assign characteristics (order may vary)
+	// 특성 할당 (반환 순서가 보장되지 않으므로 UUID로 구분)
 	for i := range chars {
 		charUUID := chars[i].UUID().String()
 		switch charUUID {
 		case protocol.Char1UUID:
-			c.statusChar = chars[i]
+			c.statusChar = chars[i] // CHAR1 = STATUS 알림 수신
 		case protocol.Char2UUID:
-			c.cmdChar = chars[i]
+			c.cmdChar = chars[i]    // CHAR2 = 명령 쓰기 + 인증 응답
 		}
 	}
 
-	// Subscribe to STATUS notifications on CHAR1
+	// 6단계: CHAR1에 STATUS 알림 구독
+	// 매트가 주기적으로 보내는 상태 패킷을 수신하여 lastStatus에 저장합니다.
 	c.debugf("Subscribing to STATUS notifications...")
 	err = c.statusChar.EnableNotifications(func(buf []byte) {
 		c.debugf("STATUS: %s", protocol.FormatPacket(buf))
@@ -180,7 +279,9 @@ func (c *Client) connectBLE() error {
 		return fmt.Errorf("subscribe CHAR1: %w", err)
 	}
 
-	// Subscribe to auth notifications on CHAR2
+	// 7단계: CHAR2에 인증 알림 구독
+	// 핸드셰이크 후 매트가 보내는 B2F1 인증 응답을 수신합니다.
+	// authType이 0x02(인증 완료)이면 authDone 채널을 닫아 Connect가 계속 진행됩니다.
 	c.debugf("Subscribing to AUTH notifications...")
 	err = c.cmdChar.EnableNotifications(func(buf []byte) {
 		c.debugf("AUTH: %s", protocol.FormatPacket(buf))
@@ -202,8 +303,10 @@ func (c *Client) connectBLE() error {
 		case 0x02:
 			// 인증 완료
 			c.debugf("Authenticated!")
+			// authDone 채널을 안전하게 닫기 (이미 닫힌 경우 패닉 방지)
 			select {
 			case <-c.authDone:
+				// 이미 닫혀있으면 아무것도 안 함
 			default:
 				close(c.authDone)
 			}
@@ -213,18 +316,19 @@ func (c *Client) connectBLE() error {
 		return fmt.Errorf("subscribe CHAR2: %w", err)
 	}
 
-	// Wait before handshake (per connection sequence)
+	// 8단계: 연결 안정화를 위해 300ms 대기
+	// BLE 연결 직후 바로 쓰기를 하면 실패할 수 있음
 	time.Sleep(300 * time.Millisecond)
 	return nil
 }
 
-// Connect establishes a BLE connection and authenticates with existing DeviceGid.
+// Connect는 BLE 기기에 연결하고 기존 DeviceGid로 인증합니다.
 func (c *Client) Connect() error {
 	if err := c.connectBLE(); err != nil {
 		return err
 	}
 
-	// Send handshake with key
+	// DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
 	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
 	_, err := writeCharacteristic(c.cmdChar, handshake[:])
@@ -232,7 +336,8 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("write handshake: %w", err)
 	}
 
-	// Wait for authentication
+	// 10단계: 인증 완료 대기 (최대 5초)
+	// 매트가 B2F1 응답(authType=0x02)을 보내면 authDone 채널이 닫힘
 	select {
 	case <-c.authDone:
 		c.debugf("Authentication complete")
@@ -276,8 +381,8 @@ func (c *Client) Pair() ([6]byte, error) {
 	}
 }
 
-// Disconnect closes the BLE connection.
-// Safe to call even if Connect/Pair did not complete successfully.
+// Disconnect는 BLE 연결을 해제합니다.
+// Connect/Pair이 완료되지 않은 상태에서도 안전하게 호출 가능합니다.
 func (c *Client) Disconnect() error {
 	c.connected = false
 	var zeroDevice bluetooth.Device
@@ -287,8 +392,17 @@ func (c *Client) Disconnect() error {
 	return c.device.Disconnect()
 }
 
-// GetStatus returns the latest STATUS from the mat.
-// Waits up to timeout for a status update.
+// GetStatus는 매트의 최신 STATUS 데이터를 반환합니다.
+//
+// CHAR1 알림을 통해 자동으로 수신된 lastStatus를 반환합니다.
+// 아직 STATUS를 받지 못한 경우, timeout까지 100ms 간격으로 폴링합니다.
+//
+// 매개변수:
+//   - timeout: STATUS 수신 대기 최대 시간 (예: 5 * time.Second)
+//
+// 반환값:
+//   - 성공: 최신 Status 데이터
+//   - 실패: timeout 내에 STATUS를 받지 못하면 오류
 func (c *Client) GetStatus(timeout time.Duration) (*protocol.Status, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -298,18 +412,34 @@ func (c *Client) GetStatus(timeout time.Duration) (*protocol.Status, error) {
 		if st != nil {
 			return st, nil
 		}
+		// STATUS 수신을 기다리며 100ms 간격으로 확인
 		time.Sleep(100 * time.Millisecond)
 	}
 	return nil, errors.New("no status received within timeout")
 }
 
-// SetTemp sends a temperature change command.
+// SetTemp는 매트의 목표 온도를 설정합니다.
+//
+// 현재 STATUS에서 현재 온도를 읽은 후, 지정된 목표 온도로 HEAT 명령을 전송합니다.
+//
+// 매개변수:
+//   - side: 제어할 면 (protocol.SideLeft, SideRight, SideBoth)
+//   - leftTemp: 왼쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
+//   - rightTemp: 오른쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
+//
+// 내부 동작:
+//  1. GetStatus로 현재 온도(원시 바이트) 획득 (3초 타임아웃)
+//  2. EncodeTemp로 목표 온도를 바이트로 인코딩
+//  3. BuildHeat로 HEAT 명령 패킷 생성
+//  4. CHAR2(cmdChar)로 패킷 전송
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
+	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
 		return fmt.Errorf("get current status: %w", err)
 	}
 
+	// 목표 온도를 BLE 바이트로 인코딩
 	leftTgt, err := protocol.EncodeTemp(leftTemp)
 	if err != nil {
 		return fmt.Errorf("encode left temp: %w", err)
@@ -319,6 +449,7 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		return fmt.Errorf("encode right temp: %w", err)
 	}
 
+	// HEAT 명령 패킷 생성 및 전송
 	pkt := protocol.BuildHeat(side, st.LeftCurrentRaw, st.RightCurrentRaw, leftTgt, rightTgt)
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
 	_, err = writeCharacteristic(c.cmdChar, pkt[:])
@@ -328,11 +459,19 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	return nil
 }
 
-// PowerOn sends a power-on command.
+// PowerOn은 매트의 전원을 켭니다.
+//
+// 가능하면 현재 STATUS의 온도 데이터를 포함하여 전원 ON 명령을 보냅니다.
+// STATUS를 아직 받지 못한 경우(연결 직후 등)에는 온도를 0으로 설정하여 전송합니다.
+//
+// 동작 과정:
+//  1. GetStatus로 현재 온도 조회 시도 (3초 타임아웃)
+//  2. 성공: 현재 온도 포함 PowerOn 패킷 전송
+//  3. 실패: 온도=0으로 폴백 PowerOn 패킷 전송
 func (c *Client) PowerOn() error {
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
-		// If no status yet, use zeros
+		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
 		pkt := protocol.BuildPowerOn(0, 0)
 		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 		_, err = writeCharacteristic(c.cmdChar, pkt[:])
@@ -342,6 +481,7 @@ func (c *Client) PowerOn() error {
 		return nil
 	}
 
+	// 현재 온도를 포함하여 전원 ON 명령 전송
 	pkt := protocol.BuildPowerOn(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 	_, err = writeCharacteristic(c.cmdChar, pkt[:])
@@ -351,10 +491,16 @@ func (c *Client) PowerOn() error {
 	return nil
 }
 
-// PowerOff sends a power-off command.
+// PowerOff는 매트의 전원을 끕니다.
+//
+// 전원을 끈 후에도 매트는 BLE 광고를 계속하므로,
+// BLE를 통해 다시 전원을 켤 수 있습니다 (물리 버튼 불필요).
+//
+// PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
+		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
 		pkt := protocol.BuildPowerOff(0, 0)
 		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 		_, err = writeCharacteristic(c.cmdChar, pkt[:])
@@ -364,6 +510,7 @@ func (c *Client) PowerOff() error {
 		return nil
 	}
 
+	// 현재 온도를 포함하여 전원 OFF 명령 전송
 	pkt := protocol.BuildPowerOff(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 	_, err = writeCharacteristic(c.cmdChar, pkt[:])

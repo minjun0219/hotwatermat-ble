@@ -2,14 +2,11 @@
 
 package ble
 
-import (
-	"fmt"
-	"os/exec"
-)
+import "fmt"
 
 // wrapBLEEnableError wraps adapter.Enable() errors with macOS-specific guidance.
 func wrapBLEEnableError(err error) error {
-	return fmt.Errorf(`%w
+	return fmt.Errorf(`enable BLE adapter: %w
 
 Bluetooth permission denied or adapter unavailable.
 Please allow Bluetooth access for your terminal app:
@@ -17,9 +14,4 @@ Please allow Bluetooth access for your terminal app:
 
 To open System Settings directly, run:
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"`, err)
-}
-
-// openBLESettings opens macOS Bluetooth privacy settings.
-func openBLESettings() {
-	_ = exec.Command("open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth").Start()
 }

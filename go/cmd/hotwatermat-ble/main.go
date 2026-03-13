@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const scanTimeout = 5 * time.Second
+
 var (
 	address   string
 	deviceGid string
@@ -153,21 +155,30 @@ func connect() (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 	if address == "" {
-		// Auto-scan for KDO_HotWaterMat device
+		// Auto-scan for device
 		fmt.Println("No address specified, scanning for devices...")
-		results, err := ble.Scan(5*time.Second, "KDO_HotWaterMat")
+		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return nil, fmt.Errorf("auto-scan failed: %w", err)
 		}
-		if len(results) == 0 {
-			return nil, fmt.Errorf("no KDO_HotWaterMat device found. Make sure the mat is powered on and in range")
+		// De-duplicate by address
+		seen := make(map[string]bool)
+		var unique []ble.ScanResult
+		for _, r := range results {
+			if !seen[r.Address] {
+				seen[r.Address] = true
+				unique = append(unique, r)
+			}
 		}
-		if len(results) == 1 {
-			address = results[0].Address
-			fmt.Printf("Found device: %s (RSSI: %d)\n", address, results[0].RSSI)
+		if len(unique) == 0 {
+			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
+		}
+		if len(unique) == 1 {
+			address = unique[0].Address
+			fmt.Printf("Found device: %s (RSSI: %d)\n", address, unique[0].RSSI)
 		} else {
 			fmt.Println("Multiple devices found:")
-			for i, r := range results {
+			for i, r := range unique {
 				fmt.Printf("  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
 			}
 			fmt.Println("Please specify --address to select a device.")

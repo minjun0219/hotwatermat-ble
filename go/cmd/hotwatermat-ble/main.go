@@ -290,9 +290,9 @@ var setupCmd = &cobra.Command{
 		if err := client.Connect(); err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
+		defer client.Disconnect()
 
 		st, err := client.GetStatus(5 * time.Second)
-		client.Disconnect()
 		if err != nil {
 			return fmt.Errorf("status check failed: %w", err)
 		}

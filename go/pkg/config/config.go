@@ -15,11 +15,12 @@ const (
 	configFile = "device.json"
 )
 
-// DeviceConfig는 캐시된 기기 정보를 나타냅니다.
+// DeviceConfig는 캐시된 기기 설정 정보를 나타냅니다.
+// setup 명령 또는 자동 저장을 통해 생성되며, JSON 파일로 저장됩니다.
 type DeviceConfig struct {
-	Address   string    `json:"address"`
-	DeviceGid string    `json:"device_gid"`
-	CachedAt  time.Time `json:"cached_at"`
+	Address   string    `json:"address"`    // BLE 기기 MAC 주소 (macOS에서는 UUID)
+	DeviceGid string    `json:"device_gid"` // 6바이트 인증 키 (12자리 16진수 문자열)
+	CachedAt  time.Time `json:"cached_at"`  // 설정이 저장된 시간
 }
 
 // configDir는 설정 디렉토리 경로를 반환합니다.

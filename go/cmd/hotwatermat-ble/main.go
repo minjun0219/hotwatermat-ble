@@ -396,6 +396,19 @@ var setupCmd = &cobra.Command{
 }
 
 // connect는 CLI 플래그, 환경변수, 설정 파일을 기반으로 BLE 기기에 연결합니다.
+//
+// 기기 주소 결정 우선순위:
+//  1. --address 플래그
+//  2. HOTWATERMAT_ADDRESS 환경변수
+//  3. 설정 파일 (setup 명령으로 저장된 값)
+//  4. 자동 스캔 (주변 기기 검색)
+//
+// DeviceGid 결정 우선순위:
+//  1. --device-gid 플래그
+//  2. HOTWATERMAT_DEVICE_GID 환경변수
+//  3. 설정 파일
+//
+// 연결 성공 시 설정 파일이 없으면 자동 저장합니다.
 func connect() (*ble.Client, error) {
 	// 기기 주소 결정: flag → env → config → auto-scan
 	if address == "" {

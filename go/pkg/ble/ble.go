@@ -24,7 +24,7 @@ type ScanResult struct {
 // If nameFilter is non-empty, only devices matching that name are returned.
 func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 	if err := adapter.Enable(); err != nil {
-		return nil, fmt.Errorf("enable BLE adapter: %w", err)
+		return nil, wrapBLEEnableError(fmt.Errorf("enable BLE adapter: %w", err))
 	}
 
 	var (
@@ -93,7 +93,7 @@ func (c *Client) debugf(format string, args ...any) {
 // Connect establishes a BLE connection and authenticates.
 func (c *Client) Connect() error {
 	if err := adapter.Enable(); err != nil {
-		return fmt.Errorf("enable BLE adapter: %w", err)
+		return wrapBLEEnableError(fmt.Errorf("enable BLE adapter: %w", err))
 	}
 
 	uuid, err := bluetooth.ParseUUID(protocol.ServiceUUID)

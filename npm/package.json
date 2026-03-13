@@ -4,13 +4,19 @@
   "description": "BLE protocol library for heated mattress pad (KDO_HotWaterMat / EQM555) — WASM-powered, no native dependencies",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "hotwatermat-ble": "./bin/cli.js"
+  },
   "files": [
     "dist/",
+    "bin/cli.js",
+    "bin/install.js",
     "src/hotwatermat.wasm"
   ],
   "scripts": {
     "build:wasm": "../wasm/build.sh",
     "build": "tsc",
+    "postinstall": "node bin/install.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -18,7 +24,8 @@
     "bluetooth",
     "hot-water-mat",
     "iot",
-    "wasm"
+    "wasm",
+    "cli"
   ],
   "license": "MIT",
   "repository": {

@@ -10,7 +10,63 @@ Go 프로토콜 라이브러리를 WASM으로 컴파일하여 브라우저 및 N
 npm install hotwatermat-ble
 ```
 
-## 사용법
+## CLI 사용법
+
+설치 없이 `npx`로 바로 실행하거나, 글로벌 설치 후 사용할 수 있습니다.
+
+```bash
+# 설치 없이 바로 실행
+npx hotwatermat-ble --help
+
+# 글로벌 설치
+npm install -g hotwatermat-ble
+hotwatermat-ble --help
+```
+
+### BLE 명령어 (네이티브 바이너리 필요)
+
+설치 시 OS/arch에 맞는 네이티브 바이너리를 자동으로 다운로드합니다.
+
+```bash
+# 기기 스캔
+npx hotwatermat-ble scan
+
+# 현재 상태 확인
+npx hotwatermat-ble status
+
+# 온도 설정
+npx hotwatermat-ble temp --left 35 --right 35
+
+# 전원 켜기/끄기
+npx hotwatermat-ble on
+npx hotwatermat-ble off
+```
+
+### 프로토콜 명령어 (WASM, BLE 불필요)
+
+네이티브 바이너리 없이도 프로토콜 패킷 생성/파싱이 가능합니다.
+
+```bash
+# 온도 인코딩/디코딩
+npx hotwatermat-ble encode-temp 35.0    # → 163
+npx hotwatermat-ble decode-temp 163     # → 35
+
+# 패킷 생성 (hex 출력)
+npx hotwatermat-ble build-handshake
+npx hotwatermat-ble build-heat both 35.0 35.0
+npx hotwatermat-ble build-power-on
+npx hotwatermat-ble build-power-off
+
+# 상태 패킷 파싱 (20바이트 hex 입력)
+npx hotwatermat-ble parse-status <40자리hex>
+
+# 체크섬 계산
+npx hotwatermat-ble checksum <hex>
+```
+
+## 라이브러리 사용법
+
+Node.js/TypeScript에서 라이브러리로 직접 사용할 수 있습니다.
 
 ```typescript
 import {

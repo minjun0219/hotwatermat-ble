@@ -1,1 +1,9 @@
 go/hotwatermat-ble
+
+# npm build artifacts
+npm/dist/
+npm/node_modules/
+
+# Downloaded native binaries (postinstall)
+npm/bin/hotwatermat-ble
+npm/bin/hotwatermat-ble.exe

@@ -30,7 +30,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "hotwatermat-ble",
 	Short: "Control a BLE hot water mat",
-	Long:  "CLI tool to control a KDO_HotWaterMat device via Bluetooth Low Energy.",
+	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
 }
 
 var scanCmd = &cobra.Command{
@@ -38,7 +38,7 @@ var scanCmd = &cobra.Command{
 	Short: "Scan for BLE hot water mat devices",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Scanning for devices (5 seconds)...")
-		results, err := ble.Scan(5*time.Second, "KDO_HotWaterMat")
+		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return err
 		}
@@ -161,14 +161,16 @@ func connect() (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("auto-scan failed: %w", err)
 		}
-		// De-duplicate by address
-		seen := make(map[string]bool)
-		var unique []ble.ScanResult
+		// De-duplicate by address, keeping strongest RSSI
+		best := make(map[string]ble.ScanResult)
 		for _, r := range results {
-			if !seen[r.Address] {
-				seen[r.Address] = true
-				unique = append(unique, r)
+			if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
+				best[r.Address] = r
 			}
+		}
+		var unique []ble.ScanResult
+		for _, r := range best {
+			unique = append(unique, r)
 		}
 		if len(unique) == 0 {
 			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)

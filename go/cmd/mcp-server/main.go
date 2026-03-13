@@ -331,7 +331,7 @@ func connectFromArgs(args map[string]any) (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 	if address == "" {
-		address = protocol.DefaultBLEAddress
+		return nil, fmt.Errorf("no device address specified. Set HOTWATERMAT_ADDRESS or use --address flag")
 	}
 
 	gid := protocol.DefaultDeviceGid

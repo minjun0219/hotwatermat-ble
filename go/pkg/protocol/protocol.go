@@ -22,7 +22,6 @@ const (
 	Char2UUID   = "00001c0d-d102-11e1-9b23-2ce2a80200dd" // 명령 쓰기 + 인증
 	Char3UUID   = "00001c0d-d102-11e1-9b23-2ce2a80400dd" // 미사용
 
-	DefaultBLEAddress = "FD319CFA-2E62-116D-D348-5B9FEEE95D2F"
 	// BLEDeviceName is the advertised BLE device name.
 	BLEDeviceName = "KDO_HotWaterMat"
 

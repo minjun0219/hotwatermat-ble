@@ -117,16 +117,57 @@ export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2R
 export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
 ```
 
-### MCP 서버
+### MCP 서버 (릴리즈 다운로드)
 
-AI 어시스턴트에서 도구 기반 제어가 가능합니다:
+AI 어시스턴트에서 도구 기반 제어가 가능합니다.
+
+[Releases](https://github.com/minjun0219/hotwatermat-ble/releases)에서 다운로드:
 
 ```bash
-# 빌드 및 실행
+# Releases 페이지에서 버전 확인 후 다운로드 (예: v0.1.0)
+VERSION=v0.1.0  # 원하는 버전으로 변경
+curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xz
+sudo mv hotwatermat-ble-mcp /usr/local/bin/
+```
+
+### MCP 서버 (소스 빌드)
+
+Go 1.22+ 필요:
+
+```bash
 cd go && go build -o hotwatermat-ble-mcp ./cmd/mcp-server/
 ```
 
-Claude Code 설정 (`settings.json`):
+### MCP 클라이언트 설정
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "hotwatermat": {
+      "command": "/usr/local/bin/hotwatermat-ble-mcp",
+      "env": {
+        "HOTWATERMAT_DEVICE_GID": "<YOUR_GID>"
+      }
+    }
+  }
+}
+```
+
+Cursor:
+
+```json
+{
+  "mcpServers": {
+    "hotwatermat": {
+      "command": "hotwatermat-ble-mcp"
+    }
+  }
+}
+```
+
+Claude Code (`settings.json`):
 
 ```json
 {
@@ -139,6 +180,8 @@ Claude Code 설정 (`settings.json`):
 ```
 
 사용 가능한 MCP 도구: `scan`, `status`, `set_temp`, `power_on`, `power_off`
+
+> GID는 환경변수 `HOTWATERMAT_DEVICE_GID`로 설정하거나, 각 도구 호출 시 `device_gid` 인자로 전달할 수 있습니다.
 
 ### npm 패키지
 

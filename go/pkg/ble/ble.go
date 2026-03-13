@@ -267,7 +267,7 @@ func (c *Client) Pair() ([6]byte, error) {
 		c.connected = true
 		return gid, nil
 	case <-time.After(10 * time.Second):
-		return [6]byte{}, errors.New("pairing timeout — is the mat in pairing mode?")
+		return [6]byte{}, errors.New("pairing timeout - is the mat in pairing mode?")
 	}
 }
 

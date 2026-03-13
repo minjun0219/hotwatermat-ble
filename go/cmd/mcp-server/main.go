@@ -8,7 +8,7 @@
 //   - status: 현재 상태 조회 (온도, 모드, 수위)
 //   - set_temp: 목표 온도 설정 (28.0~48.0°C, 0.5°C 단위)
 //   - power_on: 전원 켜기
-//   - power_off: 전원 끄기 (물리 버튼으로만 재시작 가능)
+//   - power_off: 전원 끄기
 //
 // 실행 방법:
 //
@@ -261,7 +261,7 @@ func getTools() []tool {
 		},
 		{
 			Name:        "power_off",
-			Description: "Turn off the hot water mat (requires physical button to restart)",
+			Description: "Turn off the hot water mat",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -400,7 +400,7 @@ func handlePowerOn(args map[string]any) callToolResult {
 
 // handlePowerOff는 매트 전원을 끕니다.
 //
-// 주의: 전원을 끄면 물리적 버튼으로만 다시 켤 수 있습니다.
+// 전원을 끈 후에도 BLE를 통해 다시 켤 수 있습니다.
 // 선택 인자: address, device_gid
 func handlePowerOff(args map[string]any) callToolResult {
 	client, err := connectFromArgs(args)
@@ -412,7 +412,7 @@ func handlePowerOff(args map[string]any) callToolResult {
 	if err := client.PowerOff(); err != nil {
 		return errorResult(fmt.Sprintf("Failed to power off: %v", err))
 	}
-	return textResult("Power OFF sent. Physical button required to restart.")
+	return textResult("Power OFF sent.")
 }
 
 // connectFromArgs는 도구 인자와 환경변수를 사용하여 BLE 기기에 연결합니다.

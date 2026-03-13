@@ -5,7 +5,7 @@
 //   - status: 매트의 현재 상태(온도, 모드, 수위)를 표시합니다
 //   - temp: 매트의 목표 온도를 설정합니다
 //   - on: 매트 전원을 켭니다
-//   - off: 매트 전원을 끕니다 (물리 버튼으로만 재시작 가능)
+//   - off: 매트 전원을 끕니다
 //
 // 사용 예시:
 //
@@ -198,11 +198,11 @@ var onCmd = &cobra.Command{
 
 // offCmd는 전원 끄기 명령입니다.
 //
-// 주의: 전원을 끄면 물리 버튼을 눌러야만 다시 켤 수 있습니다.
-// BLE 명령(on)만으로는 재시작이 불가능합니다.
+// 전원을 끈 후에도 매트는 BLE 광고를 계속하므로,
+// 'on' 명령으로 다시 전원을 켤 수 있습니다.
 var offCmd = &cobra.Command{
 	Use:   "off",
-	Short: "Power off the mat (requires physical button to restart)",
+	Short: "Power off the mat",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client, err := connect()
 		if err != nil {
@@ -213,7 +213,7 @@ var offCmd = &cobra.Command{
 		if err := client.PowerOff(); err != nil {
 			return err
 		}
-		fmt.Println("Power OFF sent. Physical button required to restart.")
+		fmt.Println("Power OFF sent.")
 		return nil
 	},
 }

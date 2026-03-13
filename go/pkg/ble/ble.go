@@ -445,8 +445,8 @@ func (c *Client) PowerOn() error {
 
 // PowerOff는 매트의 전원을 끕니다.
 //
-// 주의: 전원을 끄면 물리적 버튼을 눌러야만 다시 켤 수 있습니다.
-// BLE 명령만으로는 재시작이 불가능합니다.
+// 전원을 끈 후에도 매트는 BLE 광고를 계속하므로,
+// BLE를 통해 다시 전원을 켤 수 있습니다 (물리 버튼 불필요).
 //
 // PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {

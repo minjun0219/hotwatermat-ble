@@ -269,7 +269,7 @@ export function buildPowerOn(
 /**
  * 전원 끄기(Power OFF) 패킷을 생성합니다.
  *
- * 주의: 전원을 끄면 물리적 버튼으로만 재시작 가능합니다.
+ * 전원을 끈 후에도 BLE를 통해 다시 켤 수 있습니다.
  *
  * @param leftCur 왼쪽 현재 온도 바이트 (기본값 0, STATUS에서 받은 원시값)
  * @param rightCur 오른쪽 현재 온도 바이트 (기본값 0, STATUS에서 받은 원시값)

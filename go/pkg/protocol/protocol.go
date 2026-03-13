@@ -348,8 +348,8 @@ func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
 
 // BuildPowerOff는 전원 끄기(Power OFF) 명령 패킷을 생성합니다.
 //
-// 주의: 전원을 끄면 물리 버튼을 눌러야만 다시 켤 수 있습니다.
-// BLE 명령만으로는 재시작이 불가능합니다.
+// 전원을 끈 후에도 매트는 BLE 광고를 계속하므로,
+// BLE를 통해 다시 전원을 켤 수 있습니다 (물리 버튼 불필요).
 //
 // 매개변수:
 //   - leftCur: 왼쪽 현재 온도 (STATUS 패킷의 byte[7] 원시값, 없으면 0)

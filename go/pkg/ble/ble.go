@@ -107,7 +107,7 @@ func (c *Client) Connect() error {
 	found := make(chan struct{})
 
 	err = adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-		if result.Address.String() == c.address || result.LocalName() == "KDO_HotWaterMat" {
+		if result.Address.String() == c.address || result.LocalName() == protocol.BLEDeviceName {
 			targetAddr = result.Address
 			a.StopScan()
 			close(found)

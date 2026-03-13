@@ -4,12 +4,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/minjun0219/hotwatermat-ble/pkg/ble"
 	"github.com/minjun0219/hotwatermat-ble/pkg/protocol"
 	"github.com/spf13/cobra"
 )
+
+const scanTimeout = 5 * time.Second
 
 var (
 	address   string
@@ -28,15 +31,15 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "hotwatermat-ble",
 	Short: "Control a BLE hot water mat",
-	Long:  "CLI tool to control a KDO_HotWaterMat device via Bluetooth Low Energy.",
+	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
 }
 
 var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan for BLE hot water mat devices",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("Scanning for devices (5 seconds)...")
-		results, err := ble.Scan(5*time.Second, "KDO_HotWaterMat")
+		fmt.Printf("Scanning for devices (%s)...\n", scanTimeout)
+		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return err
 		}
@@ -153,10 +156,46 @@ func connect() (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 	if address == "" {
-		address = protocol.DefaultBLEAddress
+		// Auto-scan for device
+		fmt.Println("No address specified, scanning for devices...")
+		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
+		if err != nil {
+			return nil, fmt.Errorf("auto-scan failed: %w", err)
+		}
+		// De-duplicate by address, keeping strongest RSSI
+		best := make(map[string]ble.ScanResult)
+		for _, r := range results {
+			if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
+				best[r.Address] = r
+			}
+		}
+		var unique []ble.ScanResult
+		for _, r := range best {
+			unique = append(unique, r)
+		}
+		sort.Slice(unique, func(i, j int) bool {
+			if unique[i].RSSI != unique[j].RSSI {
+				return unique[i].RSSI > unique[j].RSSI // strongest first
+			}
+			return unique[i].Address < unique[j].Address // stable tiebreaker
+		})
+		if len(unique) == 0 {
+			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
+		}
+		if len(unique) == 1 {
+			address = unique[0].Address
+			fmt.Printf("Found device: %s (RSSI: %d)\n", address, unique[0].RSSI)
+		} else {
+			fmt.Println("Multiple devices found:")
+			for i, r := range unique {
+				fmt.Printf("  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
+			}
+			fmt.Println("Please specify --address to select a device.")
+			return nil, fmt.Errorf("multiple devices found, specify --address")
+		}
 	}
 
-	gid := protocol.DefaultDeviceGid
+	var gid [6]byte
 	if deviceGid != "" {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(deviceGid)
@@ -169,6 +208,8 @@ func connect() (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
 		}
+	} else {
+		return nil, fmt.Errorf("no device GID specified. Set HOTWATERMAT_DEVICE_GID or use --device-gid flag")
 	}
 
 	client := ble.NewClient(address, gid, debug)

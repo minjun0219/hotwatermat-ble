@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/minjun0219/hotwatermat-ble/pkg/ble"
@@ -37,7 +38,7 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan for BLE hot water mat devices",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("Scanning for devices (5 seconds)...")
+		fmt.Printf("Scanning for devices (%s)...\n", scanTimeout)
 		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return err
@@ -172,6 +173,12 @@ func connect() (*ble.Client, error) {
 		for _, r := range best {
 			unique = append(unique, r)
 		}
+		sort.Slice(unique, func(i, j int) bool {
+			if unique[i].RSSI != unique[j].RSSI {
+				return unique[i].RSSI > unique[j].RSSI // strongest first
+			}
+			return unique[i].Address < unique[j].Address // stable tiebreaker
+		})
 		if len(unique) == 0 {
 			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
 		}

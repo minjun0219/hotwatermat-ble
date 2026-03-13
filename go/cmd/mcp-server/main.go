@@ -238,7 +238,7 @@ func handleToolCall(params callToolParams) callToolResult {
 }
 
 func handleScan() callToolResult {
-	results, err := ble.Scan(5*time.Second, "KDO_HotWaterMat")
+	results, err := ble.Scan(5*time.Second, protocol.BLEDeviceName)
 	if err != nil {
 		return errorResult(fmt.Sprintf("Scan failed: %v", err))
 	}
@@ -331,10 +331,10 @@ func connectFromArgs(args map[string]any) (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 	if address == "" {
-		address = protocol.DefaultBLEAddress
+		return nil, fmt.Errorf("no device address specified. Provide address argument or set HOTWATERMAT_ADDRESS env var")
 	}
 
-	gid := protocol.DefaultDeviceGid
+	var gid [6]byte
 	if gidHex := getStringArg(args, "device_gid"); gidHex != "" {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(gidHex)
@@ -347,6 +347,8 @@ func connectFromArgs(args map[string]any) (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
 		}
+	} else {
+		return nil, fmt.Errorf("no device GID specified. Provide device_gid argument or set HOTWATERMAT_DEVICE_GID env var")
 	}
 
 	client := ble.NewClient(address, gid, false)

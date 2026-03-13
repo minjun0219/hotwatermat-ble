@@ -22,7 +22,8 @@ const (
 	Char2UUID   = "00001c0d-d102-11e1-9b23-2ce2a80200dd" // 명령 쓰기 + 인증
 	Char3UUID   = "00001c0d-d102-11e1-9b23-2ce2a80400dd" // 미사용
 
-	DefaultBLEAddress = "FD319CFA-2E62-116D-D348-5B9FEEE95D2F"
+	// BLEDeviceName is the advertised BLE device name.
+	BLEDeviceName = "KDO_HotWaterMat"
 
 	// 모드 값 (byte[2])
 	ModeHeat     byte = 0x01
@@ -44,8 +45,6 @@ const (
 	Pad byte = 0xFE
 )
 
-// DefaultDeviceGid는 6바이트 기기 인증 키 (예시 값)입니다.
-var DefaultDeviceGid = [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
 
 // ModeNames는 모드 바이트 값을 읽기 쉬운 이름으로 매핑합니다.
 var ModeNames = map[byte]string{

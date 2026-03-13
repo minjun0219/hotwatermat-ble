@@ -4,6 +4,9 @@ import (
 	"testing"
 )
 
+// testDeviceGid is a test-only device GID.
+var testDeviceGid = [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
+
 func TestEncodeTemp(t *testing.T) {
 	tests := []struct {
 		temp    float64
@@ -134,7 +137,7 @@ func TestBuildHandshake(t *testing.T) {
 }
 
 func TestBuildHandshakeWithKey(t *testing.T) {
-	gid := DefaultDeviceGid
+	gid := testDeviceGid
 	pkt := BuildHandshakeWithKey(gid)
 
 	if pkt[0] != STX {
@@ -347,8 +350,8 @@ func TestParseDeviceGid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseDeviceGid error: %v", err)
 	}
-	if gid != DefaultDeviceGid {
-		t.Errorf("gid = %X, want %X", gid, DefaultDeviceGid)
+	if gid != testDeviceGid {
+		t.Errorf("gid = %X, want %X", gid, testDeviceGid)
 	}
 }
 
@@ -357,8 +360,8 @@ func TestParseDeviceGidHex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseDeviceGidHex error: %v", err)
 	}
-	if gid != DefaultDeviceGid {
-		t.Errorf("gid = %X, want %X", gid, DefaultDeviceGid)
+	if gid != testDeviceGid {
+		t.Errorf("gid = %X, want %X", gid, testDeviceGid)
 	}
 
 	// Invalid cases

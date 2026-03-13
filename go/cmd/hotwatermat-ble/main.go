@@ -265,11 +265,11 @@ var setupCmd = &cobra.Command{
 			// BLE 페어링으로 GID 자동 취득
 			fmt.Println("Starting pairing... (make sure mat is in pairing mode)")
 			pairClient := ble.NewClient(selectedAddr, [6]byte{}, debug)
+			defer pairClient.Disconnect()
 			gid, err = pairClient.Pair()
 			if err != nil {
 				return fmt.Errorf("pairing failed: %w", err)
 			}
-			pairClient.Disconnect()
 			fmt.Printf("DeviceGid acquired: %s\n", protocol.FormatDeviceGid(gid))
 
 		default:

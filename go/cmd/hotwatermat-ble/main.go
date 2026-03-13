@@ -173,7 +173,10 @@ var setupCmd = &cobra.Command{
 		scanner := bufio.NewScanner(os.Stdin)
 
 		// 기존 설정 확인
-		existing, _ := config.Load()
+		existing, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("failed to load existing config: %w", err)
+		}
 		if existing != nil {
 			fmt.Printf("Existing config found (address: %s, GID: %s)\n", existing.Address, existing.DeviceGid)
 			fmt.Print("Overwrite? [y/N]: ")

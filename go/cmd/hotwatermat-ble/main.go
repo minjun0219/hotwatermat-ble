@@ -158,7 +158,7 @@ var offCmd = &cobra.Command{
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Interactive setup: scan, pair, and save device config",
-	Long:  "Scans for devices, pairs to acquire DeviceGid, verifies connection, and saves config to ~/.config/hotwatermat-ble/device.json",
+	Long:  "Scans for devices, pairs to acquire DeviceGid, verifies connection, and saves config to the platform-specific config directory used by this tool",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// --reset 처리
 		if resetSetup {

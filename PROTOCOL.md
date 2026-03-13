@@ -145,7 +145,7 @@ B2 80 06 04 00 FE AB [L_cur] [R_cur] FE 00 [R_cur] FE [R_cur] FE FE FE FE [check
               0xAB = OFF
 ```
 
-**Warning:** After power OFF, the mat stops BLE advertising entirely. It cannot be turned back on via BLE — physical button required.
+**Note:** The mat continues BLE advertising after power OFF — it can be turned back on via BLE without pressing the physical button.
 
 ## Authentication
 
@@ -204,7 +204,7 @@ B2 00 [mode] [side] [vol/water] [field5] [field6] [L_cur] [R_cur] [field9] [L_tg
 3. **Short connections** — official app uses connect/command/disconnect cycles, not persistent connections
 4. **No BLE bonding** — all auth is application-level via DeviceGid handshake
 5. **Write with response** — use `write_gatt_char(..., response=True)` for reliability
-6. **Power OFF kills BLE** — mat stops advertising after power off, physical button needed to restart
+6. **Power OFF keeps BLE** — mat continues advertising after power off, can be turned back on via BLE
 
 ---
 *Reverse-engineered from Android app HCI snoop captures + APK source analysis, March 2026*

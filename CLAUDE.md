@@ -3,7 +3,7 @@
 ## Project Overview
 
 **hotwatermat-ble** is an open-source BLE controller for a heated mattress pad (KDO_HotWaterMat / EQM555). It communicates directly over BLE, replacing the proprietary app with open-source tooling.
-The project provides a CLI, MCP server, and npm/WASM package — all built on a shared Go protocol library.
+The project provides a CLI and MCP server — all built on a shared Go protocol library.
 
 ## Architecture
 
@@ -12,8 +12,6 @@ go/pkg/protocol/   → Core packet encoding/decoding (no BLE dependency)
 go/pkg/ble/         → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
 go/cmd/hotwatermat-ble/ → CLI (cobra)
 go/cmd/mcp-server/  → MCP server (JSON-RPC over stdio)
-wasm/               → WASM build of protocol package
-npm/                → TypeScript wrapper for WASM
 skill/              → OpenClaw skill definition
 ```
 

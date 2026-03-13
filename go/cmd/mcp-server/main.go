@@ -334,7 +334,7 @@ func connectFromArgs(args map[string]any) (*ble.Client, error) {
 		return nil, fmt.Errorf("no device address specified. Set HOTWATERMAT_ADDRESS or use --address flag")
 	}
 
-	gid := protocol.DefaultDeviceGid
+	var gid [6]byte
 	if gidHex := getStringArg(args, "device_gid"); gidHex != "" {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(gidHex)
@@ -347,6 +347,8 @@ func connectFromArgs(args map[string]any) (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
 		}
+	} else {
+		return nil, fmt.Errorf("no device GID specified. Set HOTWATERMAT_DEVICE_GID env var")
 	}
 
 	client := ble.NewClient(address, gid, false)

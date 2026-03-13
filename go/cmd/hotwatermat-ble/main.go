@@ -186,7 +186,7 @@ func connect() (*ble.Client, error) {
 		}
 	}
 
-	gid := protocol.DefaultDeviceGid
+	var gid [6]byte
 	if deviceGid != "" {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(deviceGid)
@@ -199,6 +199,8 @@ func connect() (*ble.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
 		}
+	} else {
+		return nil, fmt.Errorf("no device GID specified. Set HOTWATERMAT_DEVICE_GID or use --device-gid flag")
 	}
 
 	client := ble.NewClient(address, gid, debug)

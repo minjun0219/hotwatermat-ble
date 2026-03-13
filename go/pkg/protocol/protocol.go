@@ -45,8 +45,6 @@ const (
 	Pad byte = 0xFE
 )
 
-// DefaultDeviceGid는 6바이트 기기 인증 키 (예시 값)입니다.
-var DefaultDeviceGid = [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
 
 // ModeNames는 모드 바이트 값을 읽기 쉬운 이름으로 매핑합니다.
 var ModeNames = map[byte]string{

@@ -153,7 +153,26 @@ func connect() (*ble.Client, error) {
 		address = os.Getenv("HOTWATERMAT_ADDRESS")
 	}
 	if address == "" {
-		address = protocol.DefaultBLEAddress
+		// Auto-scan for KDO_HotWaterMat device
+		fmt.Println("No address specified, scanning for devices...")
+		results, err := ble.Scan(5*time.Second, "KDO_HotWaterMat")
+		if err != nil {
+			return nil, fmt.Errorf("auto-scan failed: %w", err)
+		}
+		if len(results) == 0 {
+			return nil, fmt.Errorf("no KDO_HotWaterMat device found. Make sure the mat is powered on and in range")
+		}
+		if len(results) == 1 {
+			address = results[0].Address
+			fmt.Printf("Found device: %s (RSSI: %d)\n", address, results[0].RSSI)
+		} else {
+			fmt.Println("Multiple devices found:")
+			for i, r := range results {
+				fmt.Printf("  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
+			}
+			fmt.Println("Please specify --address to select a device.")
+			return nil, fmt.Errorf("multiple devices found, specify --address")
+		}
 	}
 
 	gid := protocol.DefaultDeviceGid

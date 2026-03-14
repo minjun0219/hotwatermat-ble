@@ -79,9 +79,41 @@ An MCP server binary is available for direct AI agent integration:
 | `HOTWATERMAT_ADDRESS` | BLE device address (UUID format on macOS) |
 | `HOTWATERMAT_DEVICE_GID` | 12-character hex authentication key |
 
+## Common Scenarios
+
+**Turn on at a set temperature**
+```bash
+hotwatermat-ble temp --left 35 --right 30
+hotwatermat-ble on
+hotwatermat-ble status
+```
+
+**Turn off**
+```bash
+hotwatermat-ble off
+hotwatermat-ble status
+```
+
+**Check if it's running**
+```bash
+hotwatermat-ble status
+```
+
 ## Tips
 
 - The mat supports only one BLE connection at a time
 - If the official app is connected, force-close it first
 - Status updates stream every ~1 second while connected
 - Keep connections short — connect → send command → disconnect
+- Always run `status` after on/off/temp to verify the change took effect
+- If BLE times out, retry up to 2 times before giving up
+
+## Reporting Results (for AI agents)
+
+After every action (on/off/temp), always run `status` and report back in a friendly format. Include:
+
+- Current mode (HEAT / STANDBY / OFF)
+- Water level status
+- Left and right current temperature vs target temperature
+- Whether sides are still heating or already at target
+- A warm closing note if turning on for sleep

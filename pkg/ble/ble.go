@@ -232,31 +232,71 @@ func (c *Client) connectBLE() error {
 	}
 
 	// 2단계: 기기 스캔 — 주소 또는 이름으로 찾기
-	c.debugf("Scanning for device %s...", c.address)
-
+	// BLE 연결 해제 직후 매트가 광고를 재시작하기까지 시간이 필요할 수 있어
+	// 최대 3회 시도, 각 10초 타임아웃 (총 최대 30초)
 	var targetAddr bluetooth.Address
-	found := make(chan struct{}) // 기기를 찾으면 이 채널을 닫음
+	const maxRetries = 3
+	hasAddress := c.address != ""
 
-	err = adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-		// MAC 주소 일치 또는 기기 이름이 "KDO_HotWaterMat"이면 대상 기기
-		if result.Address.String() == c.address || result.LocalName() == protocol.BLEDeviceName {
-			targetAddr = result.Address
-			a.StopScan() // 기기를 찾았으므로 스캔 중단
-			close(found)
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		c.debugf("Scanning for device %s... (attempt %d/%d)", c.address, attempt, maxRetries)
+
+		found := make(chan struct{})
+		var once sync.Once // close(found)를 1회만 실행하도록 보호
+		scanDone := make(chan error, 1)
+
+		go func() {
+			scanDone <- adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
+				// 주소가 지정된 경우 주소만 매칭, 없으면 이름으로 폴백
+				matched := false
+				if hasAddress {
+					matched = result.Address.String() == c.address
+				} else {
+					matched = result.LocalName() == protocol.BLEDeviceName
+				}
+				if matched {
+					targetAddr = result.Address
+					a.StopScan()
+					once.Do(func() { close(found) })
+				}
+			})
+		}()
+
+		// 10초 타임아웃으로 StopScan 강제 호출
+		timer := time.NewTimer(10 * time.Second)
+		select {
+		case <-found:
+			timer.Stop()
+			<-scanDone // Scan 고루틴 종료 대기
+			goto deviceFound
+		case scanErr := <-scanDone:
+			// Scan이 조기 종료 (권한/어댑터 에러 등)
+			timer.Stop()
+			if scanErr != nil {
+				return fmt.Errorf("scan: %w", scanErr)
+			}
+			// StopScan으로 인한 정상 종료 — found 확인
+			select {
+			case <-found:
+				goto deviceFound
+			default:
+				if attempt < maxRetries {
+					c.debugf("Device not found, retrying in 2s...")
+					time.Sleep(2 * time.Second)
+				}
+			}
+		case <-timer.C:
+			adapter.StopScan()
+			<-scanDone // Scan 고루틴 종료 대기
+			if attempt < maxRetries {
+				c.debugf("Device not found, retrying in 2s...")
+				time.Sleep(2 * time.Second)
+			}
 		}
-	})
-	if err != nil {
-		return fmt.Errorf("scan: %w", err)
 	}
+	return errors.New("device not found after 3 attempts\n\nPossible causes:\n  - Official app is still connected (force close it first)\n  - Mat is powered off and not advertising (press any button on the remote)\n  - Device is out of BLE range")
 
-	// 10초 내에 기기를 찾지 못하면 타임아웃
-	select {
-	case <-found:
-		// 기기를 찾음
-	case <-time.After(10 * time.Second):
-		adapter.StopScan()
-		return errors.New("device not found within timeout")
-	}
+deviceFound:
 
 	// 3단계: BLE 연결 수립
 	c.debugf("Connecting to %s...", targetAddr.String())

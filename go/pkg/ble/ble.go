@@ -392,6 +392,14 @@ func (c *Client) Disconnect() error {
 	return c.device.Disconnect()
 }
 
+
+// ClearStatus는 캐시된 STATUS 데이터를 초기화합니다.
+// verify 등에서 최신 상태를 강제로 다시 수신받을 때 사용합니다.
+func (c *Client) ClearStatus() {
+	c.mu.Lock()
+	c.lastStatus = nil
+	c.mu.Unlock()
+}
 // GetStatus는 매트의 최신 STATUS 데이터를 반환합니다.
 //
 // CHAR1 알림을 통해 자동으로 수신된 lastStatus를 반환합니다.

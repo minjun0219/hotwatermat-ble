@@ -1,2 +1,5 @@
 go/hotwatermat-ble
 go/mcp-server
+
+# 빌드 산출물
+*.tar.gz

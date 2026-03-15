@@ -510,10 +510,10 @@ func TestFormatPacket(t *testing.T) {
 	}
 }
 
-// TestParseAuthResponseChecksumMismatch는 체크섬이 잘못된 인증 응답 패킷이 거부되는지 테스트합니다.
+// TestParseAuthResponseChecksumMismatch는 체크섬이 잘못된 인증 응답 패킷에 대해
+// ParseAuthResponse가 오류를 반환하는지 테스트합니다.
 //
-// ParseAuthResponse에 추가된 체크섬 검증 로직이 올바르게 동작하는지,
-// 그리고 체크섬 불일치 오류가 ParseDeviceGid까지 전파되는지 확인합니다.
+// ParseAuthResponse에 추가된 체크섬 검증 로직이 올바르게 동작하는지만 검증합니다.
 func TestParseAuthResponseChecksumMismatch(t *testing.T) {
 	// 인증 완료 응답 패킷 (authType=0x02) — 체크섬을 의도적으로 틀리게 설정
 	pkt := []byte{

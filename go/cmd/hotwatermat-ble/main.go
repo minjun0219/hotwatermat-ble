@@ -124,38 +124,59 @@ var statusCmd = &cobra.Command{
 // tempCmd는 온도 설정 명령입니다.
 //
 // --left와 --right 플래그로 목표 온도를 지정합니다.
-// 한쪽만 지정하면 해당 면만 제어하고, 양쪽 모두 지정하면 동시 제어합니다.
+// 한쪽만 지정하면 반대쪽은 현재 목표 온도를 유지하고, 양쪽 모두 지정하면 동시 제어합니다.
 //
-// 자동 보정 동작:
-//   - --left만 지정: side=왼쪽, 오른쪽 온도는 왼쪽과 동일하게 설정
-//   - --right만 지정: side=오른쪽, 왼쪽 온도는 오른쪽과 동일하게 설정
+// 동작:
+//   - --left만 지정: side=왼쪽, 오른쪽은 현재 목표 온도 유지
+//   - --right만 지정: side=오른쪽, 왼쪽은 현재 목표 온도 유지
 //   - 양쪽 모두 지정: side=양쪽
 //   - 양쪽 모두 미지정: 오류 반환
 var tempCmd = &cobra.Command{
 	Use:   "temp",
 	Short: "Set target temperature",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		leftChanged := cmd.Flags().Changed("left")
+		rightChanged := cmd.Flags().Changed("right")
+
+		// 양쪽 모두 미지정 시 오류
+		if !leftChanged && !rightChanged {
+			return fmt.Errorf("specify --left and/or --right temperature")
+		}
+
+		// 범위 검증 (28.0~48.0)
+		if leftChanged && (leftTemp < 28.0 || leftTemp > 48.0) {
+			return fmt.Errorf("left temperature must be between 28.0 and 48.0 (got %.1f)", leftTemp)
+		}
+		if rightChanged && (rightTemp < 28.0 || rightTemp > 48.0) {
+			return fmt.Errorf("right temperature must be between 28.0 and 48.0 (got %.1f)", rightTemp)
+		}
+
 		client, err := connect()
 		if err != nil {
 			return err
 		}
 		defer client.Disconnect()
 
-		// 좌/우 선택 결정
+		// 한쪽만 지정된 경우, 현재 상태를 조회하여 반대쪽 목표 온도 유지
 		side := protocol.SideBoth
-		if leftTemp > 0 && rightTemp == 0 {
-			// 왼쪽만 지정된 경우
-			side = protocol.SideLeft
-			rightTemp = leftTemp // 오른쪽도 같은 온도로 설정 (패킷 구성에 필요)
-		} else if rightTemp > 0 && leftTemp == 0 {
-			// 오른쪽만 지정된 경우
-			side = protocol.SideRight
-			leftTemp = rightTemp // 왼쪽도 같은 온도로 설정 (패킷 구성에 필요)
-		}
-
-		// 양쪽 모두 미지정 시 오류
-		if leftTemp == 0 && rightTemp == 0 {
-			return fmt.Errorf("specify --left and/or --right temperature")
+		if leftChanged != rightChanged {
+			st, err := client.GetStatus(5 * time.Second)
+			if err != nil {
+				return fmt.Errorf("failed to get current status: %w", err)
+			}
+			if leftChanged && !rightChanged {
+				side = protocol.SideLeft
+				rightTemp = st.RightTarget
+				if rightTemp == 0 {
+					rightTemp = leftTemp // 전원 OFF 상태면 동일 온도 사용
+				}
+			} else {
+				side = protocol.SideRight
+				leftTemp = st.LeftTarget
+				if leftTemp == 0 {
+					leftTemp = rightTemp // 전원 OFF 상태면 동일 온도 사용
+				}
+			}
 		}
 
 		// 온도 설정 명령 전송

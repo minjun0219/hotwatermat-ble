@@ -332,13 +332,18 @@ func (c *Client) connectBLE() error {
 			// 페어링 응답 — DeviceGid 추출
 			// DeviceGid(byte[3:9])는 민감한 인증 키이므로 로그에서 마스킹합니다.
 			c.debugf("AUTH: B2 F1 01 ** ** ** ** ** ** ... (GID masked, pairing response)")
-			gid, err := protocol.ParseDeviceGid(buf)
-			if err == nil {
-				c.debugf("Pairing response received")
-				select {
-				case c.pairDone <- gid:
-				default:
-				}
+			// 이미 ParseAuthResponse로 authType 및 체크섬을 검증했으므로
+			// 여기서는 중복 검증 없이 DeviceGid만 직접 추출합니다.
+			if len(buf) < 9 {
+				// 잘못된 길이의 AUTH 패킷은 무시합니다.
+				return
+			}
+			var gid protocol.DeviceGid
+			copy(gid[:], buf[3:9])
+			c.debugf("Pairing response received")
+			select {
+			case c.pairDone <- gid:
+			default:
 			}
 		case 0x02:
 			// 인증 완료 — DeviceGid 미포함이므로 전체 로그 안전

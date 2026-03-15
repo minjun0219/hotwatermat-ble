@@ -71,11 +71,22 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		results []ScanResult
 	)
 
-	// 타임아웃 후 스캔 중단하는 고루틴 — Scan() 호출 전에 시작해야
-	// Scan()이 블로킹되는 경우에도 타임아웃이 정상 동작함
+	// done 채널로 타임아웃 고루틴 취소를 지원합니다.
+	// adapter.Scan이 오류로 일찍 반환되더라도(권한/어댑터 문제 등) 고루틴이
+	// 이후 adapter.StopScan()을 호출하지 않도록 합니다.
+	// DefaultAdapter는 전역 싱글턴이므로, 누출된 StopScan()이 다음 스캔/연결을
+	// 예기치 않게 중단시키는 회귀를 방지합니다.
+	done := make(chan struct{})
+	timer := time.NewTimer(timeout)
 	go func() {
-		time.Sleep(timeout)
-		adapter.StopScan()
+		select {
+		case <-timer.C:
+			// 타임아웃 — 스캔 중단
+			adapter.StopScan()
+		case <-done:
+			// Scan()이 먼저 반환됨 — 타이머 취소 후 종료
+			timer.Stop()
+		}
 	}()
 
 	// BLE 스캔 시작 — 콜백은 기기가 발견될 때마다 호출됨
@@ -94,12 +105,26 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		})
 		mu.Unlock()
 	})
+
+	// Scan() 반환 후 타임아웃 고루틴을 취소합니다.
+	// 이 시점부터 results에 콜백이 추가되지 않으므로 안전하게 읽을 수 있습니다.
+	close(done)
+
+	// results 슬라이스를 mutex로 보호하여 읽습니다.
+	// Scan() 반환 직후에도 콜백이 동시에 실행될 가능성이 있으므로(데이터 레이스 방지)
+	// len/복사본 생성까지 임계구역으로 감쌉니다.
+	mu.Lock()
+	n := len(results)
+	out := make([]ScanResult, n)
+	copy(out, results)
+	mu.Unlock()
+
 	// StopScan()에 의한 중단 시 에러가 반환될 수 있으므로, 결과가 있으면 무시
-	if err != nil && len(results) == 0 {
+	if err != nil && n == 0 {
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 
-	return results, nil
+	return out, nil
 }
 
 // Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
@@ -284,7 +309,9 @@ func (c *Client) connectBLE() error {
 	// authType이 0x02(인증 완료)이면 authDone 채널을 닫아 Connect가 계속 진행됩니다.
 	c.debugf("Subscribing to AUTH notifications...")
 	err = c.cmdChar.EnableNotifications(func(buf []byte) {
-		c.debugf("AUTH: %s", protocol.FormatPacket(buf))
+		// 주의: raw AUTH 패킷을 그대로 로깅하면 페어링 응답(type=0x01)에
+		// 포함된 DeviceGid(인증 키)가 노출됩니다. authType을 먼저 확인한 후
+		// 타입별로 안전한 로그를 출력합니다.
 		authType, err := protocol.ParseAuthResponse(buf)
 		if err != nil {
 			return
@@ -292,6 +319,8 @@ func (c *Client) connectBLE() error {
 		switch authType {
 		case 0x01:
 			// 페어링 응답 — DeviceGid 추출
+			// DeviceGid(byte[3:9])는 민감한 인증 키이므로 로그에서 마스킹합니다.
+			c.debugf("AUTH: B2 F1 01 ** ** ** ** ** ** ... (GID masked, pairing response)")
 			gid, err := protocol.ParseDeviceGid(buf)
 			if err == nil {
 				c.debugf("Pairing response received")
@@ -301,7 +330,8 @@ func (c *Client) connectBLE() error {
 				}
 			}
 		case 0x02:
-			// 인증 완료
+			// 인증 완료 — DeviceGid 미포함이므로 전체 로그 안전
+			c.debugf("AUTH: %s (authenticated)", protocol.FormatPacket(buf))
 			c.debugf("Authenticated!")
 			// authDone 채널을 안전하게 닫기 (이미 닫힌 경우 패닉 방지)
 			select {

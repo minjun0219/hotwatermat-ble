@@ -71,10 +71,10 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		results []ScanResult
 	)
 
-	// done 채널로 타임아웃 고루틴 취소를 지원합니다.
-	// adapter.Scan이 오류로 일찍 반환되더라도(권한/어댑터 문제 등) 고루틴이
-	// 이후 adapter.StopScan()을 호출하지 않도록 합니다.
-	// DefaultAdapter는 전역 싱글턴이므로, 누출된 StopScan()이 다음 스캔/연결을
+	// done 채널은 타임아웃 고루틴을 종료하기 위한 신호입니다.
+	// adapter.Scan이 오류로 일찍 반환되더라도(권한/어댑터 문제 등) 타임아웃 고루틴이
+	// 이후 adapter.StopScan()을 호출하지 않도록 제어합니다.
+	// DefaultAdapter는 전역 싱글턴이므로, 누출된 StopScan() 호출이 다음 스캔/연결을
 	// 예기치 않게 중단시키는 회귀를 방지합니다.
 	done := make(chan struct{})
 	timer := time.NewTimer(timeout)
@@ -118,13 +118,12 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		mu.Unlock()
 	})
 
-	// Scan() 반환 후 타임아웃 고루틴을 취소합니다.
-	// 이 시점부터 results에 콜백이 추가되지 않으므로 안전하게 읽을 수 있습니다.
+	// Scan() 반환 후 타임아웃 고루틴을 종료합니다.
 	close(done)
 
-	// results 슬라이스를 mutex로 보호하여 읽습니다.
-	// Scan() 반환 직후에도 콜백이 동시에 실행될 가능성이 있으므로(데이터 레이스 방지)
-	// len/복사본 생성까지 임계구역으로 감쌉니다.
+	// results 슬라이스는 mutex로 보호된 복사본을 통해 안전하게 읽습니다.
+	// Scan() 반환 직후에도 콜백이 동시에 실행될 수 있으므로(데이터 레이스 방지)
+	// len 계산과 복사본 생성까지를 하나의 임계구역으로 감쌉니다.
 	mu.Lock()
 	n := len(results)
 	out := make([]ScanResult, n)

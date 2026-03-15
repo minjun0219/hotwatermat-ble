@@ -375,6 +375,20 @@ func TestParseStatusPowerOff(t *testing.T) {
 	}
 }
 
+// TestParseStatusChecksumMismatch는 체크섬이 잘못된 패킷이 거부되는지 테스트합니다.
+func TestParseStatusChecksumMismatch(t *testing.T) {
+	pkt := []byte{
+		0xB2, 0x00, 0x01, 0x06, 0x22, 0x02, 0x25, 0x21,
+		0x1C, 0x23, 0x21, 0x1C, 0xFE, 0xFE, 0xFE, 0xFE,
+		0xFE, 0xFE, 0xFE, 0x00,
+	}
+	pkt[19] = CalcChecksum(pkt) + 1 // 의도적으로 체크섬을 틀리게 설정
+	_, err := ParseStatus(pkt)
+	if err == nil {
+		t.Error("체크섬 불일치 시 오류가 발생해야 함")
+	}
+}
+
 // TestParseStatusInvalid는 잘못된 STATUS 패킷에 대한 오류 처리를 테스트합니다.
 //
 // 테스트 케이스:
@@ -414,8 +428,9 @@ func TestParseAuthResponse(t *testing.T) {
 	pkt := []byte{
 		0xB2, 0xF1, 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xE3,
+		0xFF, 0xFF, 0xFF, 0x00,
 	}
+	pkt[19] = CalcChecksum(pkt)
 
 	authType, err := ParseAuthResponse(pkt)
 	if err != nil {
@@ -437,6 +452,7 @@ func TestParseDeviceGid(t *testing.T) {
 		0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0x00,
 	}
+	pkt[19] = CalcChecksum(pkt)
 
 	gid, err := ParseDeviceGid(pkt)
 	if err != nil {
@@ -491,5 +507,43 @@ func TestFormatPacket(t *testing.T) {
 	want := "B2 01 FE"
 	if got != want {
 		t.Errorf("FormatPacket = %q, want %q", got, want)
+	}
+}
+
+// TestParseAuthResponseChecksumMismatch는 체크섬이 잘못된 인증 응답 패킷에 대해
+// ParseAuthResponse 자체의 체크섬 검증 로직이 오류를 반환하는지만 테스트합니다.
+//
+// 체크섬 불일치 오류가 ParseDeviceGid까지 전파되는지 여부는
+// 아래 TestParseDeviceGidChecksumMismatch에서 별도로 검증합니다.
+func TestParseAuthResponseChecksumMismatch(t *testing.T) {
+	// 인증 완료 응답 패킷 (authType=0x02) — 체크섬을 의도적으로 틀리게 설정
+	pkt := []byte{
+		0xB2, 0xF1, 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0x00,
+	}
+	pkt[19] = CalcChecksum(pkt) + 1 // 의도적으로 체크섬을 틀리게 설정
+	_, err := ParseAuthResponse(pkt)
+	if err == nil {
+		t.Error("체크섬 불일치 시 오류가 발생해야 함")
+	}
+}
+
+// TestParseDeviceGidChecksumMismatch는 체크섬이 잘못된 페어링 응답 패킷에서
+// ParseDeviceGid가 오류를 올바르게 전파하는지 테스트합니다.
+//
+// ParseDeviceGid는 내부적으로 ParseAuthResponse를 호출하므로,
+// 체크섬 불일치 오류가 호출 체인을 통해 전파되어야 합니다.
+func TestParseDeviceGidChecksumMismatch(t *testing.T) {
+	// 페어링 응답 패킷 (authType=0x01, DeviceGid 포함) — 체크섬을 의도적으로 틀리게 설정
+	pkt := []byte{
+		0xB2, 0xF1, 0x01, 0x13, 0xCE, 0x3C, 0xC5, 0x3E,
+		0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0x00,
+	}
+	pkt[19] = CalcChecksum(pkt) + 1 // 의도적으로 체크섬을 틀리게 설정
+	_, err := ParseDeviceGid(pkt)
+	if err == nil {
+		t.Error("체크섬 불일치 시 오류가 발생해야 함 (ParseAuthResponse 오류 전파 검증)")
 	}
 }

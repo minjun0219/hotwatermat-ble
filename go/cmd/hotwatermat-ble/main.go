@@ -49,6 +49,7 @@ var (
 	leftTemp   float64 // 왼쪽 목표 온도 (--left, temp 명령에서 사용)
 	rightTemp  float64 // 오른쪽 목표 온도 (--right, temp 명령에서 사용)
 	resetSetup bool    // 설정 초기화 (--reset-setup)
+	verify     bool    // 명령 실행 후 상태 확인 (--verify)
 )
 
 // main은 CLI의 진입점입니다.
@@ -115,18 +116,7 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 
-		// 전원 꺼짐 상태면 간단히 표시
-		if st.PoweredOff {
-			fmt.Println("Power: OFF")
-			return nil
-		}
-
-		// 현재 상태 출력
-		fmt.Printf("Mode:    %s\n", st.ModeName)                                    // 동작 모드
-		fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))                      // 좌/우 선택
-		fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))          // 수위
-		fmt.Printf("Left:    %.1f°C → %.1f°C\n", st.LeftCurrent, st.LeftTarget)     // 왼쪽: 현재→목표
-		fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)   // 오른쪽: 현재→목표
+		printStatus(st)
 		return nil
 	},
 }
@@ -174,6 +164,10 @@ var tempCmd = &cobra.Command{
 			return err
 		}
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
+
+		if verify {
+			return verifyStatus(client)
+		}
 		return nil
 	},
 }
@@ -196,6 +190,10 @@ var onCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println("Power ON sent.")
+
+		if verify {
+			return verifyStatus(client)
+		}
 		return nil
 	},
 }
@@ -218,6 +216,10 @@ var offCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println("Power OFF sent.")
+
+		if verify {
+			return verifyStatus(client)
+		}
 		return nil
 	},
 }
@@ -395,6 +397,34 @@ var setupCmd = &cobra.Command{
 	},
 }
 
+// printStatus는 매트 상태를 출력합니다.
+// statusCmd와 --verify 옵션에서 공통으로 사용됩니다.
+func printStatus(st *protocol.Status) {
+	if st.PoweredOff {
+		fmt.Println("Power: OFF")
+		return
+	}
+	fmt.Printf("Mode:    %s\n", st.ModeName)
+	fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))
+	fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))
+	fmt.Printf("Left:    %.1f°C → %.1f°C\n", st.LeftCurrent, st.LeftTarget)
+	fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
+}
+
+// verifyStatus는 명령 실행 후 1초 대기한 뒤 상태를 조회하여 출력합니다.
+// --verify 플래그가 활성화된 경우에만 호출됩니다.
+func verifyStatus(client *ble.Client) error {
+	time.Sleep(1 * time.Second)
+	client.ClearStatus() // 캐시된 상태 제거 → 새 STATUS 패킷 대기
+	st, err := client.GetStatus(5 * time.Second)
+	if err != nil {
+		return fmt.Errorf("verify failed: %w", err)
+	}
+	fmt.Println("\n[Verify]")
+	printStatus(st)
+	return nil
+}
+
 // connect는 CLI 플래그, 환경변수, 설정 파일을 기반으로 BLE 기기에 연결합니다.
 //
 // 기기 주소 결정 우선순위:
@@ -543,6 +573,11 @@ func init() {
 	tempCmd.Flags().Float64Var(&rightTemp, "right", 0, "Right side target temperature (28.0-48.0)")
 
 	setupCmd.Flags().BoolVar(&resetSetup, "reset", false, "Clear cached device config")
+
+	// --verify: 명령 실행 후 자동 상태 확인
+	onCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
+	offCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
+	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 
 	// 루트 명령에 하위 명령 등록
 	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)

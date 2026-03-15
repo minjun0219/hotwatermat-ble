@@ -1,56 +1,50 @@
 # hotwatermat-ble
 
-> Open-source BLE controller for a heated mattress pad (KDO_HotWaterMat / EQM555). Control your mat from the terminal or AI agents — no proprietary app needed.
+BLE 온수매트(KDO_HotWaterMat / EQM555)를 커맨드라인으로 제어하는 오픈소스 도구입니다.
 
-BLE 온수매트(KDO_HotWaterMat / EQM555)를 커맨드라인, MCP 서버, 또는 JavaScript/TypeScript로 제어하는 오픈소스 도구입니다.
-
-WiFi나 클라우드 없이 BLE만으로 직접 제어합니다.
+WiFi나 클라우드 없이 BLE만으로 직접 제어합니다. 전용 앱 없이 터미널에서 온도 설정, 전원 제어, 상태 확인이 가능합니다.
 
 ## 아키텍처
 
 ```
-┌─────────────────────────────────────────────────┐
-│                    애플리케이션                    │
-│  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
-│  │   CLI    │  │MCP 서버   │  │  npm 패키지  │  │
-│  │  (cobra) │  │ (JSON-RPC)│  │  (TypeScript)│  │
-│  └────┬─────┘  └─────┬─────┘  └──────┬───────┘  │
-│       │              │               │           │
-│  ┌────┴──────────────┴───┐    ┌──────┴───────┐  │
-│  │     go/pkg/ble/       │    │  WASM 빌드   │  │
-│  │   (tinygo bluetooth)  │    │  (TinyGo)    │  │
-│  └────────────┬──────────┘    └──────┬───────┘  │
-│               │                      │           │
-│  ┌────────────┴──────────────────────┴───────┐  │
-│  │          go/pkg/protocol/                  │  │
-│  │    패킷 생성/파싱, 온도 인코딩, 체크섬,      │  │
-│  │    핸드쉐이크, STATUS 파서                    │  │
-│  └────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  CLI (cobra)                                │
+│  hotwatermat-ble scan/status/temp/on/off    │
+├─────────────────────────────────────────────┤
+│  go/pkg/ble/         BLE 클라이언트          │
+│  (tinygo bluetooth, CoreBluetooth on macOS) │
+├─────────────────────────────────────────────┤
+│  go/pkg/protocol/    패킷 생성/파싱          │
+│  온도 인코딩, 체크섬, 핸드쉐이크, STATUS 파서  │
+└─────────────────────────────────────────────┘
 ```
 
 ## 설치
 
-### CLI (릴리즈 다운로드)
+### 릴리즈 다운로드
 
-[Releases](https://github.com/minjun0219/hotwatermat-ble/releases)에서 다운로드:
+[Releases](https://github.com/minjun0219/hotwatermat-ble/releases) 페이지에서 플랫폼에 맞는 tar.gz를 다운로드합니다.
 
 ```bash
-# macOS ARM
-curl -L -o hotwatermat-ble \
-  https://github.com/minjun0219/hotwatermat-ble/releases/latest/download/hotwatermat-ble-darwin-arm64
-chmod +x hotwatermat-ble
+# 예: macOS ARM64 (Apple Silicon)
+VERSION=v0.1.0  # 원하는 버전으로 변경
+curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xzf -
 sudo mv hotwatermat-ble /usr/local/bin/
 ```
+
+### 지원 플랫폼
+
+| OS | 아키텍처 | 파일명 |
+|----|---------|--------|
+| macOS | amd64 (Intel) | `hotwatermat-ble_VERSION_darwin_amd64.tar.gz` |
+| macOS | arm64 (Apple Silicon) | `hotwatermat-ble_VERSION_darwin_arm64.tar.gz` |
+| Linux | amd64 | `hotwatermat-ble_VERSION_linux_amd64.tar.gz` |
 
 ### macOS 설정
 
 릴리즈 바이너리를 macOS에서 실행하려면 추가 설정이 필요합니다.
 
 **1. 개발자 미확인 경고 해제:**
-
-macOS는 인터넷에서 다운로드한 파일에 `com.apple.quarantine` 격리 속성을 자동으로 부여합니다.
-Apple 공증이 없는 바이너리는 이 속성 때문에 실행이 차단되므로, `xattr -d` 명령어로 해당 속성을 제거해야 합니다:
 
 ```bash
 sudo xattr -d com.apple.quarantine /usr/local/bin/hotwatermat-ble
@@ -61,9 +55,9 @@ sudo xattr -d com.apple.quarantine /usr/local/bin/hotwatermat-ble
 BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:
 
 - 첫 실행 시 macOS가 Bluetooth 권한 팝업을 표시합니다 → **허용**을 선택하세요.
-- 팝업이 나타나지 않거나 거부한 경우: 시스템 설정 → 개인정보 보호 및 보안 → Bluetooth → 터미널(또는 사용 중인 터미널 앱) 허용
+- 팝업이 나타나지 않거나 거부한 경우: 시스템 설정 → 개인정보 보호 및 보안 → Bluetooth → 터미널 앱 허용
 
-### CLI (소스 빌드)
+### 소스 빌드
 
 Go 1.22+ 필요:
 
@@ -72,10 +66,28 @@ cd go
 go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
 ```
 
-### npm 패키지
+## 초기 설정 (setup)
+
+처음 사용할 때 `setup` 명령으로 기기 페어링과 설정을 한 번에 완료할 수 있습니다.
 
 ```bash
-npm install hotwatermat-ble
+hotwatermat-ble setup
+```
+
+**진행 과정:**
+
+1. **[1/4] 스캔** — 주변 BLE 온수매트를 검색합니다 (5초). 여러 기기가 발견되면 선택합니다.
+2. **[2/4] DeviceGid 취득** — 두 가지 방식 중 선택:
+   - `[1]` 기존 GID 입력 (공식 앱에서 확인한 12자리 hex)
+   - `[2]` 새 페어링 (매트가 페어링 모드일 때)
+3. **[3/4] 연결 검증** — 입력한 정보로 실제 연결하여 상태를 확인합니다.
+4. **[4/4] 설정 저장** — 플랫폼별 설정 디렉토리에 저장합니다.
+
+설정 완료 후에는 `--address`와 `--device-gid` 없이 명령어를 사용할 수 있습니다.
+
+```bash
+# 저장된 설정 초기화
+hotwatermat-ble setup --reset
 ```
 
 ## 사용법
@@ -91,107 +103,34 @@ hotwatermat-ble status
 
 # 온도 설정 (28.0~48.0°C, 0.5°C 단위)
 hotwatermat-ble temp --left 35 --right 35
-hotwatermat-ble temp --left 33.5
+hotwatermat-ble temp --left 33.5        # 왼쪽만
+hotwatermat-ble temp --right 40         # 오른쪽만
 
-# 전원 켜기
+# 전원 켜기/끄기
 hotwatermat-ble on
-
-# 전원 끄기
 hotwatermat-ble off
 ```
 
-### CLI 옵션
+### 설정 우선순위
+
+기기 주소와 인증 키는 아래 우선순위로 결정됩니다:
+
+1. CLI 플래그 (`--address`, `--device-gid`)
+2. 환경변수 (`HOTWATERMAT_ADDRESS`, `HOTWATERMAT_DEVICE_GID`)
+3. 설정 파일 (`setup` 명령으로 저장된 값)
+4. 자동 스캔 (주소만 — 기기 1개 발견 시 자동 선택)
 
 ```bash
-# BLE 주소 지정
-hotwatermat-ble --address <ADDRESS> status
+# 플래그로 직접 지정
+hotwatermat-ble --address <ADDRESS> --device-gid <GID> status
 
-# 기기 인증 키 지정
-hotwatermat-ble --device-gid 13CE3CC53E5A status
+# 환경변수로 설정
+export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2R
+export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
+hotwatermat-ble status
 
 # 디버그 출력
 hotwatermat-ble --debug status
-
-# 환경 변수로도 설정 가능
-export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2R
-export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
-```
-
-### MCP 서버 (릴리즈 다운로드)
-
-AI 어시스턴트에서 도구 기반 제어가 가능합니다.
-
-[Releases](https://github.com/minjun0219/hotwatermat-ble/releases)에서 다운로드:
-
-```bash
-# Releases 페이지에서 버전 확인 후 다운로드 (예: v0.1.0)
-VERSION=v0.1.0  # 원하는 버전으로 변경
-curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xzf -
-sudo mv hotwatermat-ble-mcp /usr/local/bin/
-```
-
-### MCP 서버 (소스 빌드)
-
-Go 1.22+ 필요:
-
-```bash
-cd go && go build -o hotwatermat-ble-mcp ./cmd/mcp-server/
-```
-
-### MCP 클라이언트 설정
-
-Claude Desktop (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "hotwatermat": {
-      "command": "/usr/local/bin/hotwatermat-ble-mcp",
-      "env": {
-        "HOTWATERMAT_DEVICE_GID": "<YOUR_GID>"
-      }
-    }
-  }
-}
-```
-
-Cursor:
-
-```json
-{
-  "mcpServers": {
-    "hotwatermat": {
-      "command": "hotwatermat-ble-mcp"
-    }
-  }
-}
-```
-
-Claude Code (`settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "hotwatermat": {
-      "command": "/path/to/hotwatermat-ble-mcp"
-    }
-  }
-}
-```
-
-사용 가능한 MCP 도구: `scan`, `status`, `set_temp`, `power_on`, `power_off`
-
-> GID는 환경변수 `HOTWATERMAT_DEVICE_GID`로 설정하거나, 각 도구 호출 시 `device_gid` 인자로 전달할 수 있습니다.
-
-### npm 패키지
-
-```typescript
-import { init, encodeTemp, buildHeat, parseStatus, SIDE_BOTH } from 'hotwatermat-ble';
-
-await init(); // WASM 로드
-
-const target = encodeTemp(35.0);
-const packet = buildHeat(SIDE_BOTH, 0x21, 0x1C, target, target);
 ```
 
 ## 프로토콜
@@ -213,10 +152,8 @@ hotwatermat-ble/
 ├── go/
 │   ├── pkg/protocol/          # 패킷 생성/파싱 (순수 Go, BLE 의존성 없음)
 │   ├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
-│   ├── cmd/hotwatermat-ble/   # CLI 바이너리
-│   └── cmd/mcp-server/        # MCP 서버 (JSON-RPC stdio)
-├── wasm/                      # TinyGo WASM 빌드
-├── npm/                       # npm 패키지 (TypeScript 래퍼)
+│   ├── pkg/config/            # 기기 설정 저장/로드
+│   └── cmd/hotwatermat-ble/   # CLI 바이너리
 ├── skill/                     # OpenClaw 스킬 정의
 ├── PROTOCOL.md                # BLE 프로토콜 사양서
 └── .github/workflows/         # CI/CD (테스트 + 릴리즈)
@@ -225,14 +162,11 @@ hotwatermat-ble/
 ## 개발
 
 ```bash
-# Go 테스트 실행
-cd go && go test -v ./pkg/protocol/...
+# 프로토콜 테스트
+cd go && go test -v -race ./pkg/protocol/...
 
-# WASM 빌드
-chmod +x wasm/build.sh && ./wasm/build.sh
-
-# npm 패키지 빌드
-cd npm && npm run build
+# CLI 빌드
+cd go && go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
 ```
 
 ## 라이선스

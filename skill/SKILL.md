@@ -47,31 +47,6 @@ hotwatermat-ble off
 hotwatermat-ble scan
 ```
 
-## MCP Server
-
-An MCP server binary is available for direct AI agent integration:
-
-```json
-{
-  "mcpServers": {
-    "hotwatermat": {
-      "command": "hotwatermat-ble-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-### MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `scan` | Scan for BLE heated mat devices |
-| `status` | Get current mat status |
-| `set_temp` | Set target temperature (left/right) |
-| `power_on` | Turn mat on |
-| `power_off` | Turn mat off |
-
 ## Environment Variables
 
 | Variable | Description |

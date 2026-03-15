@@ -99,10 +99,53 @@ main() {
   info "${archive} 다운로드 중..."
   download "$url" "${tmpdir}/${archive}"
 
+  # 체크섬 검증
+  info "체크섬 검증 중..."
+  download "https://github.com/${REPO}/releases/download/${version}/checksums.txt" "${tmpdir}/checksums.txt" 2>/dev/null || true
+  if [ -f "${tmpdir}/checksums.txt" ]; then
+    local expected actual
+    expected=$(grep "${archive}" "${tmpdir}/checksums.txt" | awk '{print $1}')
+    if [ -n "$expected" ]; then
+      if command -v sha256sum &>/dev/null; then
+        actual=$(sha256sum "${tmpdir}/${archive}" | awk '{print $1}')
+      elif command -v shasum &>/dev/null; then
+        actual=$(shasum -a 256 "${tmpdir}/${archive}" | awk '{print $1}')
+      fi
+      if [ -n "$actual" ] && [ "$expected" != "$actual" ]; then
+        error "체크섬 불일치! 다운로드가 손상되었을 수 있습니다."
+        exit 1
+      fi
+      ok "체크섬 확인 완료 ✓"
+    fi
+  fi
+
   info "바이너리 추출 중..."
-  tar xzf "${tmpdir}/${archive}" -C "$tmpdir" "$BINARY_NAME"
+  tar xzf "${tmpdir}/${archive}" -C "$tmpdir" --strip-components=0
+  # tar.gz 내부 ./ 접두사 대응
+  if [ -f "${tmpdir}/./${BINARY_NAME}" ]; then
+    mv "${tmpdir}/./${BINARY_NAME}" "${tmpdir}/${BINARY_NAME}"
+  fi
 
   mkdir -p "$INSTALL_DIR"
+
+  # 기존 버전 덮어쓰기 확인
+  if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ] && [ "${FORCE:-0}" != "1" ]; then
+    local existing_ver
+    existing_ver=$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null || echo "unknown")
+    warn "기존 설치 발견: ${INSTALL_DIR}/${BINARY_NAME} (${existing_ver})"
+    warn "${version}(으)로 덮어쓰시겠습니까? [y/N] "
+    if [ -t 0 ]; then
+      read -r answer
+      if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+        info "설치를 취소했습니다."
+        exit 0
+      fi
+    else
+      warn "비대화형 환경 — FORCE=1로 덮어쓰기 가능. 설치를 취소합니다."
+      exit 0
+    fi
+  fi
+
   mv "${tmpdir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
   chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 

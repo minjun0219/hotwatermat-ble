@@ -12,7 +12,6 @@ go/pkg/protocol/        → Core packet encoding/decoding (no BLE dependency)
 go/pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
 go/pkg/config/           → Device config storage
 go/cmd/hotwatermat-ble/  → CLI (cobra)
-skill/                   → OpenClaw skill definition
 ```
 
 ## Key Protocol Rules
@@ -63,7 +62,7 @@ Use generic terms: "hot water mat", "온수매트", "KDO_HotWaterMat" (BLE devic
 
 ## Language
 
-- Documentation (README, SKILL.md): Korean (한국어)
+- Documentation (README): Korean (한국어)
 - Code comments: Korean
 - CLAUDE.md, CI configs: English
 - Commit messages: English prefix (`feat:`, `fix:`, `chore:`, `docs:`) + Korean or English body

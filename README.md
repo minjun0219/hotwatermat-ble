@@ -28,7 +28,7 @@ WiFi나 클라우드 없이 BLE만으로 직접 제어합니다. 전용 앱 없�
 ```bash
 # 예: macOS ARM64 (Apple Silicon)
 VERSION=v0.1.0  # 원하는 버전으로 변경
-curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xzf -
+curl -L "https://github.com/minjun0219/hotwatermat-ble/releases/download/${VERSION}/hotwatermat-ble_${VERSION}_darwin_arm64.tar.gz" | tar xzf - hotwatermat-ble
 sudo mv hotwatermat-ble /usr/local/bin/
 ```
 
@@ -125,7 +125,7 @@ hotwatermat-ble off
 hotwatermat-ble --address <ADDRESS> --device-gid <GID> status
 
 # 환경변수로 설정
-export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2R
+export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2F
 export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
 hotwatermat-ble status
 

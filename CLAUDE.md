@@ -8,10 +8,10 @@ The project provides a CLI built on a shared Go protocol library.
 ## Architecture
 
 ```
-go/pkg/protocol/        → Core packet encoding/decoding (no BLE dependency)
-go/pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
-go/pkg/config/           → Device config storage
-go/cmd/hotwatermat-ble/  → CLI (cobra)
+pkg/protocol/        → Core packet encoding/decoding (no BLE dependency)
+pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
+pkg/config/           → Device config storage
+cmd/hotwatermat-ble/  → CLI (cobra)
 ```
 
 ## Key Protocol Rules
@@ -37,7 +37,7 @@ go/cmd/hotwatermat-ble/  → CLI (cobra)
 ### Testing
 
 ```bash
-cd go && go test -v -race ./pkg/protocol/...
+go test -v -race ./pkg/protocol/...
 ```
 
 Only `pkg/protocol/` has tests. BLE package requires real hardware.

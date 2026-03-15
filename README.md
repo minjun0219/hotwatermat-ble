@@ -11,10 +11,10 @@ WiFi나 클라우드 없이 BLE만으로 직접 제어합니다. 전용 앱 없�
 │  CLI (cobra)                                │
 │  hotwatermat-ble scan/status/temp/on/off    │
 ├─────────────────────────────────────────────┤
-│  go/pkg/ble/         BLE 클라이언트          │
+│  pkg/ble/            BLE 클라이언트          │
 │  (tinygo bluetooth, CoreBluetooth on macOS) │
 ├─────────────────────────────────────────────┤
-│  go/pkg/protocol/    패킷 생성/파싱          │
+│  pkg/protocol/       패킷 생성/파싱          │
 │  온도 인코딩, 체크섬, 핸드쉐이크, STATUS 파서  │
 └─────────────────────────────────────────────┘
 ```
@@ -62,7 +62,6 @@ BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:
 Go 1.22+ 필요:
 
 ```bash
-cd go
 go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
 ```
 
@@ -149,23 +148,22 @@ BLE 프로토콜 전체 사양은 [PROTOCOL.md](PROTOCOL.md)를 참고하세요.
 
 ```
 hotwatermat-ble/
-├── go/
-│   ├── pkg/protocol/          # 패킷 생성/파싱 (순수 Go, BLE 의존성 없음)
-│   ├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
-│   ├── pkg/config/            # 기기 설정 저장/로드
-│   └── cmd/hotwatermat-ble/   # CLI 바이너리
-├── PROTOCOL.md                # BLE 프로토콜 사양서
-└── .github/workflows/         # CI/CD (테스트 + 릴리즈)
+├── pkg/protocol/          # 패킷 생성/파싱 (순수 Go, BLE 의존성 없음)
+├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
+├── pkg/config/            # 기기 설정 저장/로드
+├── cmd/hotwatermat-ble/   # CLI 바이너리
+├── PROTOCOL.md            # BLE 프로토콜 사양서
+└── .github/workflows/     # CI/CD (테스트 + 릴리즈)
 ```
 
 ## 개발
 
 ```bash
 # 프로토콜 테스트
-cd go && go test -v -race ./pkg/protocol/...
+go test -v -race ./pkg/protocol/...
 
 # CLI 빌드
-cd go && go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
+go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
 ```
 
 ## 라이선스

@@ -79,13 +79,25 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 	done := make(chan struct{})
 	timer := time.NewTimer(timeout)
 	go func() {
+		// 타임아웃 고루틴 종료 시 타이머를 정리합니다.
+		defer timer.Stop()
+
 		select {
 		case <-timer.C:
-			// 타임아웃 — 스캔 중단
-			adapter.StopScan()
+			// 타이머 만료 시점에 Scan()이 이미 반환했는지(done closed) 다시 확인합니다.
+			// timer.C와 done이 거의 동시에 준비된 경우에도, Scan() 종료 이후에는
+			// StopScan()을 호출하지 않도록 경합을 제거합니다.
+			select {
+			case <-done:
+				// Scan()이 이미 종료된 상태 — StopScan()을 호출하지 않고 종료
+				return
+			default:
+				// 여전히 스캔이 진행 중인 경우에만 StopScan()을 호출
+				adapter.StopScan()
+			}
 		case <-done:
-			// Scan()이 먼저 반환됨 — 타이머 취소 후 종료
-			timer.Stop()
+			// Scan()이 먼저 반환됨 — 타임아웃 고루틴만 종료
+			return
 		}
 	}()
 

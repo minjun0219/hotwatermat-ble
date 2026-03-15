@@ -269,6 +269,22 @@ func (c *Client) connectBLE() error {
 			timer.Stop()
 			<-scanDone // Scan 고루틴 종료 대기
 			goto deviceFound
+		case scanErr := <-scanDone:
+			// Scan이 조기 종료 (권한/어댑터 에러 등)
+			timer.Stop()
+			if scanErr != nil {
+				return fmt.Errorf("scan: %w", scanErr)
+			}
+			// StopScan으로 인한 정상 종료 — found 확인
+			select {
+			case <-found:
+				goto deviceFound
+			default:
+				if attempt < maxRetries {
+					c.debugf("Device not found, retrying in 2s...")
+					time.Sleep(2 * time.Second)
+				}
+			}
 		case <-timer.C:
 			adapter.StopScan()
 			<-scanDone // Scan 고루틴 종료 대기

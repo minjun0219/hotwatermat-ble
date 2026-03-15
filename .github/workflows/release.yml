@@ -17,20 +17,19 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
+          go-version-file: go.mod
 
       - name: Build and archive darwin binaries
-        working-directory: go
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           for arch in amd64 arm64; do
-            mkdir -p ../staging
+            mkdir -p staging
             GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w" \
-              -o "../staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
-            cp ../README.md ../LICENSE ../staging/
-            mkdir -p ../dist
-            tar -czf "../dist/hotwatermat-ble_${VERSION}_darwin_${arch}.tar.gz" -C ../staging .
-            rm -rf ../staging
+              -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+            cp README.md LICENSE staging/
+            mkdir -p dist
+            tar -czf "dist/hotwatermat-ble_${VERSION}_darwin_${arch}.tar.gz" -C staging .
+            rm -rf staging
           done
 
       - uses: actions/upload-artifact@v4
@@ -47,22 +46,21 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
+          go-version-file: go.mod
 
       - name: Install BLE deps
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
 
       - name: Build and archive linux amd64
-        working-directory: go
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          mkdir -p ../staging
+          mkdir -p staging
           CGO_ENABLED=1 go build -ldflags="-s -w" \
-            -o "../staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
-          cp ../README.md ../LICENSE ../staging/
-          mkdir -p ../dist
-          tar -czf "../dist/hotwatermat-ble_${VERSION}_linux_amd64.tar.gz" -C ../staging .
-          rm -rf ../staging
+            -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+          cp README.md LICENSE staging/
+          mkdir -p dist
+          tar -czf "dist/hotwatermat-ble_${VERSION}_linux_amd64.tar.gz" -C staging .
+          rm -rf staging
 
       - uses: actions/upload-artifact@v4
         with:

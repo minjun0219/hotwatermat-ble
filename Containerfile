@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdbus-1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src/go
+WORKDIR /src
 
 # Usage:
 #   podman build -t hotwatermat-ble-dev -f Containerfile .

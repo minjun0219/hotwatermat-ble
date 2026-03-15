@@ -236,27 +236,42 @@ func (c *Client) connectBLE() error {
 	// 최대 3회 시도, 각 10초 타임아웃 (총 최대 30초)
 	var targetAddr bluetooth.Address
 	const maxRetries = 3
+	hasAddress := c.address != ""
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		c.debugf("Scanning for device %s... (attempt %d/%d)", c.address, attempt, maxRetries)
 
 		found := make(chan struct{})
-		scanErr := adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
-			if result.Address.String() == c.address || result.LocalName() == protocol.BLEDeviceName {
-				targetAddr = result.Address
-				a.StopScan()
-				close(found)
-			}
-		})
-		if scanErr != nil {
-			return fmt.Errorf("scan: %w", scanErr)
-		}
+		var once sync.Once // close(found)를 1회만 실행하도록 보호
+		scanDone := make(chan error, 1)
 
+		go func() {
+			scanDone <- adapter.Scan(func(a *bluetooth.Adapter, result bluetooth.ScanResult) {
+				// 주소가 지정된 경우 주소만 매칭, 없으면 이름으로 폴백
+				matched := false
+				if hasAddress {
+					matched = result.Address.String() == c.address
+				} else {
+					matched = result.LocalName() == protocol.BLEDeviceName
+				}
+				if matched {
+					targetAddr = result.Address
+					a.StopScan()
+					once.Do(func() { close(found) })
+				}
+			})
+		}()
+
+		// 10초 타임아웃으로 StopScan 강제 호출
+		timer := time.NewTimer(10 * time.Second)
 		select {
 		case <-found:
+			timer.Stop()
+			<-scanDone // Scan 고루틴 종료 대기
 			goto deviceFound
-		case <-time.After(10 * time.Second):
+		case <-timer.C:
 			adapter.StopScan()
+			<-scanDone // Scan 고루틴 종료 대기
 			if attempt < maxRetries {
 				c.debugf("Device not found, retrying in 2s...")
 				time.Sleep(2 * time.Second)

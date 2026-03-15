@@ -45,6 +45,9 @@ var version = "dev"
 
 const scanTimeout = 5 * time.Second
 
+// postCommandDelay는 명령 전송 후 매트가 처리할 시간을 확보하기 위한 대기 시간입니다.
+const postCommandDelay = 2 * time.Second
+
 // 전역 CLI 플래그 변수들
 var (
 	address    string  // BLE 기기 주소 (--address 또는 HOTWATERMAT_ADDRESS 환경변수)
@@ -197,7 +200,7 @@ var tempCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
 
 		if verify {
@@ -224,7 +227,7 @@ var onCmd = &cobra.Command{
 		if err := client.PowerOn(); err != nil {
 			return err
 		}
-		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power ON sent.")
 
 		if verify {
@@ -251,7 +254,7 @@ var offCmd = &cobra.Command{
 		if err := client.PowerOff(); err != nil {
 			return err
 		}
-		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power OFF sent.")
 
 		if verify {

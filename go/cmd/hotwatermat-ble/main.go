@@ -415,6 +415,7 @@ func printStatus(st *protocol.Status) {
 // --verify 플래그가 활성화된 경우에만 호출됩니다.
 func verifyStatus(client *ble.Client) error {
 	time.Sleep(1 * time.Second)
+	client.ClearStatus() // 캐시된 상태 제거 → 새 STATUS 패킷 대기
 	st, err := client.GetStatus(5 * time.Second)
 	if err != nil {
 		return fmt.Errorf("verify failed: %w", err)

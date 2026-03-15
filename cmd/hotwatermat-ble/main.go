@@ -39,7 +39,14 @@ import (
 )
 
 // scanTimeout은 BLE 기기 스캔 시간입니다.
+// version은 빌드 시 ldflags로 주입됩니다.
+// 예: go build -ldflags="-X main.version=v0.1.0"
+var version = "dev"
+
 const scanTimeout = 5 * time.Second
+
+// postCommandDelay는 명령 전송 후 매트가 처리할 시간을 확보하기 위한 대기 시간입니다.
+const postCommandDelay = 2 * time.Second
 
 // 전역 CLI 플래그 변수들
 var (
@@ -66,6 +73,15 @@ var rootCmd = &cobra.Command{
 	Use:   "hotwatermat-ble",
 	Short: "Control a BLE hot water mat",
 	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
+}
+
+// versionCmd는 버전 정보를 출력합니다.
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("hotwatermat-ble %s\n", version)
+	},
 }
 
 // scanCmd는 BLE 기기 검색 명령입니다.
@@ -184,6 +200,7 @@ var tempCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
 
 		if verify {
@@ -210,6 +227,7 @@ var onCmd = &cobra.Command{
 		if err := client.PowerOn(); err != nil {
 			return err
 		}
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power ON sent.")
 
 		if verify {
@@ -236,6 +254,7 @@ var offCmd = &cobra.Command{
 		if err := client.PowerOff(); err != nil {
 			return err
 		}
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power OFF sent.")
 
 		if verify {
@@ -601,5 +620,6 @@ func init() {
 	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 
 	// 루트 명령에 하위 명령 등록
+	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)
 }

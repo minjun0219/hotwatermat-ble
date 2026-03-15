@@ -184,6 +184,7 @@ var tempCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
 
 		if verify {
@@ -210,6 +211,7 @@ var onCmd = &cobra.Command{
 		if err := client.PowerOn(); err != nil {
 			return err
 		}
+		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power ON sent.")
 
 		if verify {
@@ -236,6 +238,7 @@ var offCmd = &cobra.Command{
 		if err := client.PowerOff(); err != nil {
 			return err
 		}
+		time.Sleep(2 * time.Second) // 매트가 명령을 처리할 시간 확보
 		fmt.Println("Power OFF sent.")
 
 		if verify {

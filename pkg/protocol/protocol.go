@@ -27,6 +27,10 @@ import (
 	"strings"
 )
 
+// DeviceGid는 6바이트 기기 인증 키 타입입니다.
+// 최초 페어링 시 매트에서 발급받은 키로, 이후 핸드셰이크 인증에 사용됩니다.
+type DeviceGid = [6]byte
+
 const (
 	// PacketSize는 BLE 패킷의 고정 크기입니다. 모든 패킷은 반드시 20바이트여야 합니다.
 	PacketSize = 20

@@ -158,20 +158,24 @@ var tempCmd = &cobra.Command{
 
 		// 한쪽만 지정된 경우, 현재 상태를 조회하여 반대쪽 목표 온도 유지
 		side := protocol.SideBoth
-		if leftTemp > 0 && rightTemp == 0 {
-			side = protocol.SideLeft
+		if (leftTemp > 0 && rightTemp == 0) || (rightTemp > 0 && leftTemp == 0) {
 			st, err := client.GetStatus(5 * time.Second)
 			if err != nil {
-				return fmt.Errorf("현재 상태 조회 실패: %w", err)
+				return fmt.Errorf("failed to get current status: %w", err)
 			}
-			rightTemp = st.RightTarget // 오른쪽은 현재 목표 온도 유지
-		} else if rightTemp > 0 && leftTemp == 0 {
-			side = protocol.SideRight
-			st, err := client.GetStatus(5 * time.Second)
-			if err != nil {
-				return fmt.Errorf("현재 상태 조회 실패: %w", err)
+			if leftTemp > 0 && rightTemp == 0 {
+				side = protocol.SideLeft
+				rightTemp = st.RightTarget
+				if rightTemp == 0 {
+					rightTemp = leftTemp // 전원 OFF 상태면 동일 온도 사용
+				}
+			} else {
+				side = protocol.SideRight
+				leftTemp = st.LeftTarget
+				if leftTemp == 0 {
+					leftTemp = rightTemp // 전원 OFF 상태면 동일 온도 사용
+				}
 			}
-			leftTemp = st.LeftTarget // 왼쪽은 현재 목표 온도 유지
 		}
 
 		// 온도 설정 명령 전송

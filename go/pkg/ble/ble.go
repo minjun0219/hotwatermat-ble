@@ -71,7 +71,38 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		results []ScanResult
 	)
 
+	// done 채널은 타임아웃 고루틴을 종료하기 위한 신호입니다.
+	// adapter.Scan이 오류로 일찍 반환되더라도(권한/어댑터 문제 등) 타임아웃 고루틴이
+	// 이후 adapter.StopScan()을 호출하지 않도록 제어합니다.
+	// DefaultAdapter는 전역 싱글턴이므로, 누출된 StopScan() 호출이 다음 스캔/연결을
+	// 예기치 않게 중단시키는 회귀를 방지합니다.
+	done := make(chan struct{})
+	timer := time.NewTimer(timeout)
+	go func() {
+		// 타임아웃 고루틴 종료 시 타이머를 정리합니다.
+		defer timer.Stop()
+
+		select {
+		case <-timer.C:
+			// 타이머 만료 시점에 Scan()이 이미 반환했는지(done closed) 다시 확인합니다.
+			// timer.C와 done이 거의 동시에 준비된 경우에도, Scan() 종료 이후에는
+			// StopScan()을 호출하지 않도록 경합을 제거합니다.
+			select {
+			case <-done:
+				// Scan()이 이미 종료된 상태 — StopScan()을 호출하지 않고 종료
+				return
+			default:
+				// 여전히 스캔이 진행 중인 경우에만 StopScan()을 호출
+				adapter.StopScan()
+			}
+		case <-done:
+			// Scan()이 먼저 반환됨 — 타임아웃 고루틴만 종료
+			return
+		}
+	}()
+
 	// BLE 스캔 시작 — 콜백은 기기가 발견될 때마다 호출됨
+	// StopScan() 호출 시 Scan()이 반환됨
 	err := adapter.Scan(func(adapter *bluetooth.Adapter, result bluetooth.ScanResult) {
 		name := result.LocalName()
 		// 이름 필터가 설정된 경우, 일치하지 않는 기기는 무시
@@ -86,20 +117,25 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 		})
 		mu.Unlock()
 	})
-	if err != nil {
-		// 스캔 오류는 타임아웃 고루틴에 의해 중단될 때 발생할 수 있으므로 무시
-		_ = err
+
+	// Scan() 반환 후 타임아웃 고루틴을 종료합니다.
+	close(done)
+
+	// results 슬라이스는 mutex로 보호된 복사본을 통해 안전하게 읽습니다.
+	// Scan() 반환 직후에도 콜백이 동시에 실행될 수 있으므로(데이터 레이스 방지)
+	// len 계산과 복사본 생성까지를 하나의 임계구역으로 감쌉니다.
+	mu.Lock()
+	n := len(results)
+	out := make([]ScanResult, n)
+	copy(out, results)
+	mu.Unlock()
+
+	// StopScan()에 의한 중단 시 에러가 반환될 수 있으므로, 결과가 있으면 무시
+	if err != nil && n == 0 {
+		return nil, fmt.Errorf("scan: %w", err)
 	}
 
-	// 타임아웃 후 스캔 중단하는 고루틴 실행
-	go func() {
-		time.Sleep(timeout)
-		adapter.StopScan()
-	}()
-
-	// 타임아웃 + 여유 시간만큼 대기 후 결과 반환
-	time.Sleep(timeout + 100*time.Millisecond)
-	return results, nil
+	return out, nil
 }
 
 // Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
@@ -284,7 +320,9 @@ func (c *Client) connectBLE() error {
 	// authType이 0x02(인증 완료)이면 authDone 채널을 닫아 Connect가 계속 진행됩니다.
 	c.debugf("Subscribing to AUTH notifications...")
 	err = c.cmdChar.EnableNotifications(func(buf []byte) {
-		c.debugf("AUTH: %s", protocol.FormatPacket(buf))
+		// 주의: raw AUTH 패킷을 그대로 로깅하면 페어링 응답(type=0x01)에
+		// 포함된 DeviceGid(인증 키)가 노출됩니다. authType을 먼저 확인한 후
+		// 타입별로 안전한 로그를 출력합니다.
 		authType, err := protocol.ParseAuthResponse(buf)
 		if err != nil {
 			return
@@ -292,16 +330,24 @@ func (c *Client) connectBLE() error {
 		switch authType {
 		case 0x01:
 			// 페어링 응답 — DeviceGid 추출
-			gid, err := protocol.ParseDeviceGid(buf)
-			if err == nil {
-				c.debugf("Pairing response received, GID: %s", protocol.FormatDeviceGid(gid))
-				select {
-				case c.pairDone <- gid:
-				default:
-				}
+			// DeviceGid(byte[3:9])는 민감한 인증 키이므로 로그에서 마스킹합니다.
+			c.debugf("AUTH: B2 F1 01 ** ** ** ** ** ** ... (GID masked, pairing response)")
+			// 이미 ParseAuthResponse로 authType 및 체크섬을 검증했으므로
+			// 여기서는 중복 검증 없이 DeviceGid만 직접 추출합니다.
+			if len(buf) < 9 {
+				// 잘못된 길이의 AUTH 패킷은 무시합니다.
+				return
+			}
+			var gid protocol.DeviceGid
+			copy(gid[:], buf[3:9])
+			c.debugf("Pairing response received")
+			select {
+			case c.pairDone <- gid:
+			default:
 			}
 		case 0x02:
-			// 인증 완료
+			// 인증 완료 — DeviceGid 미포함이므로 전체 로그 안전
+			c.debugf("AUTH: %s (authenticated)", protocol.FormatPacket(buf))
 			c.debugf("Authenticated!")
 			// authDone 채널을 안전하게 닫기 (이미 닫힌 경우 패닉 방지)
 			select {
@@ -330,7 +376,7 @@ func (c *Client) Connect() error {
 
 	// DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
-	c.debugf("Sending handshake: %s", protocol.FormatPacket(handshake[:]))
+	c.debugf("Sending handshake (GID masked)")
 	_, err := writeCharacteristic(c.cmdChar, handshake[:])
 	if err != nil {
 		return fmt.Errorf("write handshake: %w", err)
@@ -372,7 +418,7 @@ func (c *Client) Pair() ([6]byte, error) {
 	// B2F1 type=0x01 페어링 응답 대기
 	select {
 	case gid := <-c.pairDone:
-		c.debugf("Pairing complete, GID: %s", protocol.FormatDeviceGid(gid))
+		c.debugf("Pairing complete")
 		c.deviceGid = gid
 		c.connected = true
 		return gid, nil

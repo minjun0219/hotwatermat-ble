@@ -154,7 +154,6 @@ hotwatermat-ble/
 │   ├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
 │   ├── pkg/config/            # 기기 설정 저장/로드
 │   └── cmd/hotwatermat-ble/   # CLI 바이너리
-├── skill/                     # OpenClaw 스킬 정의
 ├── PROTOCOL.md                # BLE 프로토콜 사양서
 └── .github/workflows/         # CI/CD (테스트 + 릴리즈)
 ```

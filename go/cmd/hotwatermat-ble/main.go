@@ -145,9 +145,20 @@ var tempCmd = &cobra.Command{
 	Use:   "temp",
 	Short: "Set target temperature",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		leftChanged := cmd.Flags().Changed("left")
+		rightChanged := cmd.Flags().Changed("right")
+
 		// 양쪽 모두 미지정 시 오류
-		if leftTemp == 0 && rightTemp == 0 {
+		if !leftChanged && !rightChanged {
 			return fmt.Errorf("specify --left and/or --right temperature")
+		}
+
+		// 범위 검증 (28.0~48.0)
+		if leftChanged && (leftTemp < 28.0 || leftTemp > 48.0) {
+			return fmt.Errorf("left temperature must be between 28.0 and 48.0 (got %.1f)", leftTemp)
+		}
+		if rightChanged && (rightTemp < 28.0 || rightTemp > 48.0) {
+			return fmt.Errorf("right temperature must be between 28.0 and 48.0 (got %.1f)", rightTemp)
 		}
 
 		client, err := connect()
@@ -158,12 +169,12 @@ var tempCmd = &cobra.Command{
 
 		// 한쪽만 지정된 경우, 현재 상태를 조회하여 반대쪽 목표 온도 유지
 		side := protocol.SideBoth
-		if (leftTemp > 0 && rightTemp == 0) || (rightTemp > 0 && leftTemp == 0) {
+		if leftChanged != rightChanged {
 			st, err := client.GetStatus(5 * time.Second)
 			if err != nil {
 				return fmt.Errorf("failed to get current status: %w", err)
 			}
-			if leftTemp > 0 && rightTemp == 0 {
+			if leftChanged && !rightChanged {
 				side = protocol.SideLeft
 				rightTemp = st.RightTarget
 				if rightTemp == 0 {

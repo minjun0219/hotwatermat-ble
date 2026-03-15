@@ -24,7 +24,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           for arch in amd64 arm64; do
             mkdir -p staging
-            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w" \
+            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=${VERSION}" \
               -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
             cp README.md LICENSE staging/
             mkdir -p dist
@@ -55,7 +55,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           mkdir -p staging
-          CGO_ENABLED=1 go build -ldflags="-s -w" \
+          CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=${VERSION}" \
             -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
           cp README.md LICENSE staging/
           mkdir -p dist

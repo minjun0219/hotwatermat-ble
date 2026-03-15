@@ -39,6 +39,10 @@ import (
 )
 
 // scanTimeout은 BLE 기기 스캔 시간입니다.
+// version은 빌드 시 ldflags로 주입됩니다.
+// 예: go build -ldflags="-X main.version=v0.1.0"
+var version = "dev"
+
 const scanTimeout = 5 * time.Second
 
 // 전역 CLI 플래그 변수들
@@ -66,6 +70,15 @@ var rootCmd = &cobra.Command{
 	Use:   "hotwatermat-ble",
 	Short: "Control a BLE hot water mat",
 	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
+}
+
+// versionCmd는 버전 정보를 출력합니다.
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("hotwatermat-ble %s\n", version)
+	},
 }
 
 // scanCmd는 BLE 기기 검색 명령입니다.
@@ -604,5 +617,6 @@ func init() {
 	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 
 	// 루트 명령에 하위 명령 등록
+	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)
 }

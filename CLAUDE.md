@@ -57,8 +57,8 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 
 ## Trademark Policy
 
-Do NOT use brand names "Navien" or "나비엔" anywhere in code, comments, docs, or commit messages.
-Use generic terms: "hot water mat", "온수매트", "KDO_HotWaterMat" (BLE device name).
+Do NOT use manufacturer brand names anywhere in code, comments, docs, or commit messages.
+Use generic terms: "hot water mat", "heated mattress pad", "온수매트", "KDO_HotWaterMat" (BLE device name).
 
 ## Language
 

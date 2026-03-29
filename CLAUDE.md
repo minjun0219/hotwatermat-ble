@@ -57,7 +57,7 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 
 ## Trademark Policy
 
-Do NOT use brand names "HotWaterMat" or "온수매트" anywhere in code, comments, docs, or commit messages.
+Do NOT use specific manufacturer brand names anywhere in code, comments, docs, or commit messages.
 Use generic terms: "hot water mat", "온수매트", "KDO_HotWaterMat" (BLE device name).
 
 ## Language

@@ -7,11 +7,20 @@ The project provides a CLI built on a shared Go protocol library.
 
 ## Architecture
 
+Go (current, hardware-verified):
+
 ```
 pkg/protocol/        → Core packet encoding/decoding (no BLE dependency)
 pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
 pkg/config/           → Device config storage
 cmd/hotwatermat-ble/  → CLI (cobra)
+```
+
+Rust port (in progress, see "Rust port" below):
+
+```
+crates/protocol/      → Core packet encoding/decoding (no deps) — mirrors pkg/protocol
+crates/cli/           → CLI binary: cli (clap) + ble (btleplug) + config (serde_json)
 ```
 
 ## Key Protocol Rules
@@ -43,6 +52,25 @@ go test -v -race ./pkg/protocol/...
 Only `pkg/protocol/` has tests. BLE package requires real hardware.
 `tinygo.org/x/bluetooth` has a broken transitive dependency (`cyw43439`), so `go mod tidy` may fail — test protocol directly.
 
+### Rust port
+
+A parallel Rust implementation lives in `crates/` (Cargo workspace). It is feature-equivalent
+to the Go CLI but the BLE layer (`btleplug`) is **not yet verified on real hardware** — until it
+is, Go remains the canonical implementation and `release.yml` keeps shipping the Go binary.
+
+```bash
+# Linux requires dbus headers for btleplug
+sudo apt-get install -y libdbus-1-dev pkg-config
+
+cargo test --all                       # protocol + config tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all --check
+cargo run -p hotwatermat-ble -- scan   # needs a real BLE adapter + mat
+```
+
+The `protocol` crate ports the Go test vectors verbatim, so `cargo test -p protocol` and
+`go test ./pkg/protocol/...` validate the same expected packets.
+
 ### Branch Strategy
 
 - `main` = always deployable
@@ -52,8 +80,9 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 ### CI
 
 - `test.yml`: Runs `go test` + `go vet` on protocol package
+- `rust.yml`: Runs `cargo fmt`/`clippy`/`test`/`build` on the Rust workspace
 - `claude-review.yml`: Claude Code auto-review on human PRs (skips bot PRs)
-- `release.yml`: Multi-platform binary release on tag push
+- `release.yml`: Multi-platform binary release on tag push (Go)
 
 ## Trademark Policy
 

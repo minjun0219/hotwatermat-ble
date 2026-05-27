@@ -1,0 +1,7 @@
+[package]
+name = "protocol"
+version = "0.1.0"
+edition = "2021"
+description = "온수매트(KDO_HotWaterMat) BLE 패킷 인코딩/디코딩 (BLE 의존성 없음)"
+
+[dependencies]

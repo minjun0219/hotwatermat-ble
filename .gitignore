@@ -4,3 +4,6 @@ go/mcp-server
 # 빌드 산출물
 *.tar.gz
 hotwatermat-ble
+
+# Rust 빌드 산출물
+/target/

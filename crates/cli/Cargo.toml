@@ -1,0 +1,21 @@
+[package]
+name = "hotwatermat-ble"
+version = "0.1.0"
+edition = "2021"
+description = "온수매트(KDO_HotWaterMat) BLE 제어 CLI"
+
+[[bin]]
+name = "hotwatermat-ble"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { path = "../protocol" }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+btleplug = "0.11"
+uuid = "1"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+anyhow = "1"

@@ -281,14 +281,12 @@ Possible causes:\n  \
                 } else if notif.uuid == char2_uuid {
                     // B2F1 인증 응답
                     match protocol::parse_auth_response(&notif.value) {
-                        Ok(0x01) => {
-                            // 페어링 응답 — DeviceGid 추출 (민감 정보이므로 로그 생략)
-                            if notif.value.len() >= 9 {
-                                let mut g = [0u8; 6];
-                                g.copy_from_slice(&notif.value[3..9]);
-                                *paired_gid.lock().unwrap() = Some(protocol::DeviceGid::new(g));
-                                pair_notify.notify_one();
-                            }
+                        // 페어링 응답 — DeviceGid 추출 (민감 정보이므로 로그 생략)
+                        Ok(0x01) if notif.value.len() >= 9 => {
+                            let mut g = [0u8; 6];
+                            g.copy_from_slice(&notif.value[3..9]);
+                            *paired_gid.lock().unwrap() = Some(protocol::DeviceGid::new(g));
+                            pair_notify.notify_one();
                         }
                         Ok(0x02) => {
                             if debug {

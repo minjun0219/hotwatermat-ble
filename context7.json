@@ -2,7 +2,7 @@
   "$schema": "https://context7.com/schema/context7.json",
   "projectTitle": "hotwatermat-ble",
   "description": "Open-source BLE controller for a hot water mat (KDO_HotWaterMat): status, per-side temperature and power from a Go CLI, no vendor app or cloud.",
-  "excludeFolders": [".github", ".claude-plugin", "cmd", "pkg"],
+  "excludeFolders": [".github", "cmd", "pkg"],
   "excludeFiles": ["AGENTS.md", "CLAUDE.md", "LICENSE"],
   "rules": [
     "Drive the mat through the hotwatermat-ble CLI (status, temp --left/--right, on, off); add --verify to temp/on/off to confirm the result.",

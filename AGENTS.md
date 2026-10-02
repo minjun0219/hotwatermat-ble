@@ -13,7 +13,6 @@ pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
 pkg/config/           → Device config storage
 cmd/hotwatermat-ble/  → CLI (cobra)
 skills/hotwatermat-ble/SKILL.md → Agent Skill for coding agents (Agent Skills format)
-.claude-plugin/       → Makes this repo a Claude Code plugin marketplace (`/plugin install hotwatermat-ble@hotwatermat-ble`)
 context7.json         → Context7 indexing config (validated against its schema in `test.yml`)
 ```
 

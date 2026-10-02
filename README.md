@@ -134,21 +134,23 @@ hotwatermat-ble status
 hotwatermat-ble --debug status
 ```
 
-## 코딩 에이전트에게
+## AI 에이전트
 
-이 저장소에는 [에이전트 스킬](skills/hotwatermat-ble/SKILL.md)이 들어 있습니다. 코딩 에이전트에게 CLI 설치와 초기 설정 확인,
-명령과 상태 출력 읽는 법, 지켜야 할 규칙(요청받은 온도만 설정, 명령은 한 번에 하나씩, DeviceGid 노출 금지)과
-문제 해결 방법을 알려 줍니다. Agent Skills 형식을 따르므로 `SKILL.md` 를 읽는 에이전트는 그대로 쓸 수 있습니다.
-Claude Code 에서는 플러그인으로 설치합니다.
+이 저장소에는 AI 에이전트용 [스킬](skills/hotwatermat-ble/SKILL.md)이 들어 있습니다. 스킬은 에이전트에게 CLI 설치와
+초기 설정 확인 방법, 명령과 상태 출력을 읽는 법을 알려 줍니다. 지켜야 할 규칙(요청받은 온도만 설정, 명령은 한 번에
+하나씩, DeviceGid 노출 금지)과 문제 해결 방법도 담았습니다. Agent Skills 형식을 따르므로 `SKILL.md`를 읽는 에이전트라면
+그대로 쓸 수 있습니다. Claude Code에서는 플러그인으로 설치합니다.
 
 ```sh
 /plugin marketplace add minjun0219/hotwatermat-ble
 /plugin install hotwatermat-ble@hotwatermat-ble
 ```
 
-`setup` 은 대화형이라 에이전트가 대신 실행하지 않습니다. 처음 한 번은 직접 터미널에서 `hotwatermat-ble setup` 을 실행해 주세요.
+`setup`은 대화형 명령이어서 스킬은 에이전트가 직접 실행하지 말고 사용자에게 요청하도록 안내합니다. 처음 한 번은 터미널에서
+직접 `hotwatermat-ble setup`을 실행해 주세요.
 
-[Context7](https://context7.com) 색인 설정(`context7.json`)도 들어 있습니다. Context7 에서 이 저장소를 색인하면, Context7 을 쓰는 에이전트가 문서와 함께 위 규칙을 받습니다.
+[Context7](https://context7.com) 설정 파일(`context7.json`)도 있습니다. Context7에 이 저장소를 등록하면 Context7을 쓰는
+에이전트가 문서와 사용 규칙을 함께 받습니다.
 
 ## 프로토콜
 
@@ -170,9 +172,9 @@ hotwatermat-ble/
 ├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
 ├── pkg/config/            # 기기 설정 저장/로드
 ├── cmd/hotwatermat-ble/   # CLI 바이너리
-├── skills/hotwatermat-ble/ # 코딩 에이전트용 스킬 (Agent Skills 형식)
+├── skills/hotwatermat-ble/ # AI 에이전트용 스킬 (Agent Skills 형식)
 ├── .claude-plugin/        # Claude Code 플러그인 마켓플레이스 설정
-├── context7.json          # Context7 색인 설정
+├── context7.json          # Context7 설정
 ├── PROTOCOL.md            # BLE 프로토콜 사양서
 └── .github/workflows/     # CI/CD (테스트 + 릴리즈)
 ```

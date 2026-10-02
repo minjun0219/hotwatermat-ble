@@ -17,7 +17,7 @@ skills/hotwatermat-ble/SKILL.md → Agent Skill for coding agents (Agent Skills 
 context7.json         → Context7 indexing config (validated against its schema in `test.yml`)
 ```
 
-The skill, the README "코딩 에이전트에게" section and the `context7.json` rules restate CLI behavior
+The skill, the README "AI 에이전트" section and the `context7.json` rules restate CLI behavior
 (commands, flags, output format, config resolution order, error messages). When a PR changes any of
 those, update them in the same PR.
 

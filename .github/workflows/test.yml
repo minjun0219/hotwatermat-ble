@@ -23,3 +23,19 @@ jobs:
 
       - name: Vet protocol
         run: go vet ./pkg/protocol/...
+
+  # Context7 reads this file to serve the docs to coding agents. Over the schema limits
+  # (e.g. a 200-character description) it gets rejected or truncated, so validate it here
+  # against the schema Context7 publishes.
+  context7:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate context7.json
+        run: |
+          curl -sSfL --retry 3 https://context7.com/schema/context7.json -o "$RUNNER_TEMP/context7.schema.json"
+          npx -y -p ajv-cli@5 -p ajv-formats@3 ajv validate -c ajv-formats \
+            -s "$RUNNER_TEMP/context7.schema.json" -d context7.json

@@ -1,0 +1,9 @@
+{
+  "name": "hotwatermat-ble",
+  "description": "Control a BLE hot water mat (KDO_HotWaterMat) without the vendor app — status, per-side temperature and power over Bluetooth LE, from the terminal or an AI agent.",
+  "author": { "name": "minjun0219", "url": "https://github.com/minjun0219" },
+  "homepage": "https://github.com/minjun0219/hotwatermat-ble",
+  "repository": "https://github.com/minjun0219/hotwatermat-ble",
+  "license": "MIT",
+  "keywords": ["ble", "bluetooth-le", "hot-water-mat", "heated-mattress-pad", "smart-home", "home-automation", "cli", "go"]
+}

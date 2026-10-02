@@ -12,7 +12,14 @@ pkg/protocol/        → Core packet encoding/decoding (no BLE dependency)
 pkg/ble/              → BLE client (tinygo bluetooth, CoreBluetooth on macOS)
 pkg/config/           → Device config storage
 cmd/hotwatermat-ble/  → CLI (cobra)
+skills/hotwatermat-ble/SKILL.md → Agent Skill for coding agents (Agent Skills format)
+.claude-plugin/       → Makes this repo a Claude Code plugin marketplace (`/plugin install hotwatermat-ble@hotwatermat-ble`)
+context7.json         → Context7 indexing config (validated against its schema in `test.yml`)
 ```
+
+The skill, the README "코딩 에이전트에게" section and the `context7.json` rules restate CLI behavior
+(commands, flags, output format, config resolution order, error messages). When a PR changes any of
+those, update them in the same PR.
 
 ## Key Protocol Rules
 
@@ -51,7 +58,7 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 
 ### CI
 
-- `test.yml`: Runs `go test` + `go vet` on protocol package
+- `test.yml`: Runs `go test` + `go vet` on protocol package, and validates `context7.json` against the Context7 schema
 - `claude-review.yml`: Claude Code auto-review on human PRs (skips bot PRs)
 - `release.yml`: Multi-platform binary release on tag push
 

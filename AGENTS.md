@@ -1,4 +1,4 @@
-# CLAUDE.md — Project Guidelines
+# AGENTS.md — Project Guidelines
 
 ## Project Overview
 
@@ -71,5 +71,5 @@ Use generic terms: "hot water mat", "온수매트", "KDO_HotWaterMat" (BLE devic
 
 - Documentation (README): Korean (한국어)
 - Code comments: Korean
-- CLAUDE.md, CI configs: English
+- AGENTS.md, CI configs: English
 - Commit messages: English prefix (`feat:`, `fix:`, `chore:`, `docs:`) + Korean or English body

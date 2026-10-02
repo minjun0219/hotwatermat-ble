@@ -24,7 +24,7 @@ jobs:
        contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
-       (contains(coalesce(github.event.issue.body, ''), '@claude') || contains(github.event.issue.title, '@claude')))
+       (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read

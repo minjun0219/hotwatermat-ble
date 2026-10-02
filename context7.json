@@ -1,0 +1,15 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "hotwatermat-ble",
+  "description": "Open-source BLE controller for a hot water mat (KDO_HotWaterMat): status, per-side temperature and power from a Go CLI, no vendor app or cloud.",
+  "excludeFolders": [".github", "cmd", "pkg"],
+  "excludeFiles": ["AGENTS.md", "CLAUDE.md", "LICENSE"],
+  "rules": [
+    "Drive the mat through the hotwatermat-ble CLI (status, temp --left/--right, on, off); add --verify to temp/on/off to confirm the result.",
+    "Target temperatures must be 28.0-48.0°C in 0.5°C steps.",
+    "Run one command at a time: the mat accepts a single BLE connection, and the vendor app must be closed.",
+    "setup is interactive: ask the user to run it. Otherwise set HOTWATERMAT_ADDRESS and HOTWATERMAT_DEVICE_GID, or pass --address and --device-gid.",
+    "The DeviceGid is the mat's authentication key: never print it in full or commit it.",
+    "Protocol packets are 20 bytes with checksum sum(bytes[1:19]) & 0xFF at byte 19; read STATUS on CHAR1 (0100dd), write everything to CHAR2 (0200dd)."
+  ]
+}

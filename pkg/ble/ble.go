@@ -554,11 +554,29 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 //
 // 가능하면 현재 STATUS의 온도 데이터를 포함하여 전원 ON 명령을 보냅니다.
 // STATUS를 아직 받지 못한 경우(연결 직후 등)에는 온도를 0으로 설정하여 전송합니다.
+//
+// 동작 과정:
+//  1. GetStatus로 현재 온도 조회 시도 (3초 타임아웃)
+//  2. 성공: 현재 온도 포함 PowerOn 패킷 전송
+//  3. 실패: 온도=0으로 폴백 PowerOn 패킷 전송
 func (c *Client) PowerOn() error {
-	leftCur, rightCur := c.currentTempsRaw()
-	pkt := protocol.BuildPowerOn(leftCur, rightCur)
+	st, err := c.GetStatus(3 * time.Second)
+	if err != nil {
+		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
+		pkt := protocol.BuildPowerOn(0, 0)
+		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
+		_, err = writeCharacteristic(c.cmdChar, pkt[:])
+		if err != nil {
+			return fmt.Errorf("write power_on command (fallback, status unavailable): %w", err)
+		}
+		return nil
+	}
+
+	// 현재 온도를 포함하여 전원 ON 명령 전송
+	pkt := protocol.BuildPowerOn(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-	if _, err := writeCharacteristic(c.cmdChar, pkt[:]); err != nil {
+	_, err = writeCharacteristic(c.cmdChar, pkt[:])
+	if err != nil {
 		return fmt.Errorf("write power_on command: %w", err)
 	}
 	return nil
@@ -571,22 +589,24 @@ func (c *Client) PowerOn() error {
 //
 // PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {
-	leftCur, rightCur := c.currentTempsRaw()
-	pkt := protocol.BuildPowerOff(leftCur, rightCur)
+	st, err := c.GetStatus(3 * time.Second)
+	if err != nil {
+		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
+		pkt := protocol.BuildPowerOff(0, 0)
+		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
+		_, err = writeCharacteristic(c.cmdChar, pkt[:])
+		if err != nil {
+			return fmt.Errorf("write power_off command (fallback, status unavailable): %w", err)
+		}
+		return nil
+	}
+
+	// 현재 온도를 포함하여 전원 OFF 명령 전송
+	pkt := protocol.BuildPowerOff(st.LeftCurrentRaw, st.RightCurrentRaw)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-	if _, err := writeCharacteristic(c.cmdChar, pkt[:]); err != nil {
+	_, err = writeCharacteristic(c.cmdChar, pkt[:])
+	if err != nil {
 		return fmt.Errorf("write power_off command: %w", err)
 	}
 	return nil
-}
-
-// currentTempsRaw는 전원 명령에 넣을 현재 온도 원시 바이트(왼쪽, 오른쪽)를 반환합니다.
-// 3초 안에 STATUS를 받지 못하면(연결 직후 등) 0, 0을 반환합니다. 전원 명령은 0이어도 동작합니다.
-func (c *Client) currentTempsRaw() (left, right byte) {
-	st, err := c.GetStatus(3 * time.Second)
-	if err != nil {
-		c.debugf("No STATUS yet, sending power command with zero temperatures")
-		return 0, 0
-	}
-	return st.LeftCurrentRaw, st.RightCurrentRaw
 }

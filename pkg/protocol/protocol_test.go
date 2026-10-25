@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"math"
 	"testing"
 )
 
@@ -545,5 +546,15 @@ func TestParseDeviceGidChecksumMismatch(t *testing.T) {
 	_, err := ParseDeviceGid(pkt)
 	if err == nil {
 		t.Error("체크섬 불일치 시 오류가 발생해야 함 (ParseAuthResponse 오류 전파 검증)")
+	}
+}
+
+// TestEncodeTempNaNInf는 NaN과 무한대가 오류로 거부되는지 테스트합니다.
+// CLI는 --left/--right 값 검증을 EncodeTemp에 맡기는데, 플래그 파서는 "NaN"·"Inf"를 그대로 받습니다.
+func TestEncodeTempNaNInf(t *testing.T) {
+	for _, temp := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := EncodeTemp(temp); err == nil {
+			t.Errorf("EncodeTemp(%v) should error", temp)
+		}
 	}
 }

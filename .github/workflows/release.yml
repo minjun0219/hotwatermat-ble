@@ -48,19 +48,20 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install BLE deps
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
-
-      - name: Build and archive linux amd64
+      # The Linux BLE backend talks to BlueZ over D-Bus in pure Go (godbus), so cgo is not
+      # needed: both architectures cross-compile on one runner into static binaries.
+      - name: Build and archive linux binaries
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          mkdir -p staging
-          CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=${VERSION}" \
-            -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
-          cp README.md LICENSE staging/
-          mkdir -p dist
-          tar -czf "dist/hotwatermat-ble_${VERSION}_linux_amd64.tar.gz" -C staging .
-          rm -rf staging
+          for arch in amd64 arm64; do
+            mkdir -p staging
+            GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" \
+              -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+            cp README.md LICENSE staging/
+            mkdir -p dist
+            tar -czf "dist/hotwatermat-ble_${VERSION}_linux_${arch}.tar.gz" -C staging .
+            rm -rf staging
+          done
 
       - uses: actions/upload-artifact@v4
         with:

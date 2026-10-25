@@ -16,13 +16,31 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: go.mod
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      # Vet and build every package, not just protocol, so a broken pkg/ble or CLI
+      # cannot reach main. Same settings as the Linux release build.
+      - name: Vet
+        run: go vet ./...
+        env:
+          CGO_ENABLED: "0"
+
+      - name: Build
+        run: go build ./...
+        env:
+          CGO_ENABLED: "0"
 
       - name: Test protocol
         run: go test -v -race ./pkg/protocol/...
-
-      - name: Vet protocol
-        run: go vet ./pkg/protocol/...
 
   # Context7 reads this file to serve the docs to coding agents. Over the schema limits
   # (e.g. a 200-character description) it gets rejected or truncated, so validate it here

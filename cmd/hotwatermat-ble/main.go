@@ -73,6 +73,8 @@ var rootCmd = &cobra.Command{
 	Use:   "hotwatermat-ble",
 	Short: "Control a BLE hot water mat",
 	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
+	// Version을 지정하면 cobra가 --version 플래그를 만들어 줍니다 (install.sh가 기존 버전 확인에 사용).
+	Version: version,
 }
 
 // versionCmd는 버전 정보를 출력합니다.
@@ -620,6 +622,8 @@ func init() {
 	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 
 	// 루트 명령에 하위 명령 등록
+	// --version 출력을 version 하위 명령과 같은 형식으로 맞춤
+	rootCmd.SetVersionTemplate("hotwatermat-ble {{.Version}}\n")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)
 }

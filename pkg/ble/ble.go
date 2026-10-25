@@ -138,6 +138,9 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 	return out, nil
 }
 
+// ErrClosed는 Disconnect로 닫힌 클라이언트가 연결하거나 명령을 쓰려 할 때 반환됩니다.
+var ErrClosed = errors.New("ble: client closed")
+
 // Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
 //
 // 사용 순서:
@@ -153,8 +156,9 @@ type Client struct {
 	// 최초 페어링 시 매트로부터 수신하며, 이후 재연결 시 사용합니다.
 	deviceGid [6]byte
 
-	// device는 연결된 BLE 기기 객체입니다.
-	device bluetooth.Device
+	// device는 연결된 BLE 기기 객체입니다. 연결 전이나 해제 후에는 nil입니다.
+	// (Windows의 bluetooth.Device는 == 비교가 안 되는 구조체라 포인터로 둡니다.)
+	device *bluetooth.Device
 
 	// statusChar는 CHAR1(0100dd) — STATUS 알림 수신용 BLE 특성입니다.
 	// 매트의 현재 상태(온도, 모드, 수위 등)를 주기적으로 알려줍니다.
@@ -168,11 +172,16 @@ type Client struct {
 	// CHAR1 알림을 통해 자동으로 업데이트됩니다.
 	lastStatus *protocol.Status
 
-	// mu는 lastStatus 필드의 동시 접근을 보호하는 뮤텍스입니다.
+	// mu는 lastStatus, device, closed 필드의 동시 접근을 보호하는 뮤텍스입니다.
+	// device와 closed는 시그널 처리 등 다른 고루틴의 Disconnect 호출과 겹칠 수 있습니다.
 	mu sync.Mutex
 
-	// connected는 현재 연결 상태를 나타냅니다.
-	connected bool
+	// closed는 Disconnect가 불렸는지 나타냅니다. 그 뒤의 연결 시도와 쓰기는 ErrClosed로 거부합니다.
+	closed bool
+
+	// connecting은 진행 중인 adapter.Connect 호출을 셉니다.
+	// Disconnect는 이 호출이 끝나 방금 맺은 연결이 해제될 때까지 기다립니다.
+	connecting sync.WaitGroup
 
 	// authDone은 인증 완료를 알리는 채널입니다.
 	authDone chan struct{}
@@ -300,11 +309,10 @@ deviceFound:
 
 	// 3단계: BLE 연결 수립
 	c.debugf("Connecting to %s...", targetAddr.String())
-	device, err := adapter.Connect(targetAddr, bluetooth.ConnectionParams{})
+	device, err := c.connectDevice(targetAddr)
 	if err != nil {
-		return fmt.Errorf("connect: %w", err)
+		return err
 	}
-	c.device = device
 
 	// 4단계: GATT 서비스 탐색 — 온수매트 서비스 찾기
 	c.debugf("Discovering services...")
@@ -408,17 +416,57 @@ deviceFound:
 	return nil
 }
 
+// connectDevice는 기기에 BLE 연결을 맺고 c.device에 저장합니다.
+//
+// 연결을 맺는 동안 Disconnect가 불렸으면 방금 맺은 연결을 바로 해제하고 ErrClosed를 반환합니다.
+// Disconnect는 이 함수가 끝날 때까지 기다리므로, 연결 도중에 Ctrl+C를 눌러도 연결이 남지 않습니다.
+func (c *Client) connectDevice(addr bluetooth.Address) (bluetooth.Device, error) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return bluetooth.Device{}, ErrClosed
+	}
+	c.connecting.Add(1)
+	c.mu.Unlock()
+	defer c.connecting.Done()
+
+	device, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
+	if err != nil {
+		return bluetooth.Device{}, fmt.Errorf("connect: %w", err)
+	}
+
+	c.mu.Lock()
+	closed := c.closed
+	if !closed {
+		c.device = &device
+	}
+	c.mu.Unlock()
+	if closed {
+		device.Disconnect()
+		return bluetooth.Device{}, ErrClosed
+	}
+	return device, nil
+}
+
 // Connect는 BLE 기기에 연결하고 기존 DeviceGid로 인증합니다.
-func (c *Client) Connect() error {
-	if err := c.connectBLE(); err != nil {
+// 도중에 실패하면 이미 맺은 BLE 연결을 해제한 뒤 오류를 반환합니다.
+func (c *Client) Connect() (err error) {
+	// Linux(BlueZ)는 프로세스가 끝나도 BLE 연결을 유지합니다. 매트는 연결을 하나만 받으므로,
+	// 실패한 연결을 남겨 두면 광고를 멈춰 공식 앱 등 다른 기기가 매트를 찾지 못할 수 있습니다.
+	defer func() {
+		if err != nil {
+			c.Disconnect()
+		}
+	}()
+
+	if err = c.connectBLE(); err != nil {
 		return err
 	}
 
 	// DeviceGid를 포함한 핸드셰이크 패킷을 CHAR2로 전송
 	handshake := protocol.BuildHandshakeWithKey(c.deviceGid)
 	c.debugf("Sending handshake (GID masked)")
-	_, err := writeCharacteristic(c.cmdChar, handshake[:])
-	if err != nil {
+	if err = c.write(handshake[:]); err != nil {
 		return fmt.Errorf("write handshake: %w", err)
 	}
 
@@ -431,51 +479,67 @@ func (c *Client) Connect() error {
 		return errors.New("authentication timeout (wrong DeviceGid?)")
 	}
 
-	c.connected = true
 	return nil
 }
 
 // Pair은 초기 페어링을 수행하여 기기의 DeviceGid를 획득합니다.
 // deviceGid가 빈 값인 Client에서 호출해야 합니다.
-func (c *Client) Pair() ([6]byte, error) {
+// 도중에 실패하면 이미 맺은 BLE 연결을 해제한 뒤 오류를 반환합니다.
+func (c *Client) Pair() (gid [6]byte, err error) {
 	var zeroGid [6]byte
 	if c.deviceGid != zeroGid {
 		return [6]byte{}, errors.New("Pair must be called on a Client with an empty DeviceGid")
 	}
 
-	if err := c.connectBLE(); err != nil {
+	// 실패 시 연결 해제 (Connect와 같은 이유)
+	defer func() {
+		if err != nil {
+			c.Disconnect()
+		}
+	}()
+
+	if err = c.connectBLE(); err != nil {
 		return [6]byte{}, err
 	}
 
 	// 초기 페어링 핸드셰이크 전송 (GID 없이)
 	handshake := protocol.BuildHandshake()
 	c.debugf("Sending pairing handshake: %s", protocol.FormatPacket(handshake[:]))
-	_, err := writeCharacteristic(c.cmdChar, handshake[:])
-	if err != nil {
+	if err = c.write(handshake[:]); err != nil {
 		return [6]byte{}, fmt.Errorf("write pairing handshake: %w", err)
 	}
 
 	// B2F1 type=0x01 페어링 응답 대기
 	select {
-	case gid := <-c.pairDone:
+	case gid = <-c.pairDone:
 		c.debugf("Pairing complete")
 		c.deviceGid = gid
-		c.connected = true
 		return gid, nil
 	case <-time.After(10 * time.Second):
 		return [6]byte{}, errors.New("pairing timeout - is the mat in pairing mode?")
 	}
 }
 
-// Disconnect는 BLE 연결을 해제합니다.
-// Connect/Pair이 완료되지 않은 상태에서도 안전하게 호출 가능합니다.
+// Disconnect는 BLE 연결을 해제하고 클라이언트를 닫습니다.
+//
+// 닫힌 클라이언트는 다시 연결하거나 명령을 쓰지 않고 ErrClosed를 반환합니다.
+// Connect/Pair이 완료되지 않았거나 이미 해제한 상태에서도 안전하게 호출할 수 있고,
+// 시그널 처리처럼 다른 고루틴에서 호출해도 됩니다. 연결을 맺는 중이면 그 연결이 해제될 때까지 기다립니다.
 func (c *Client) Disconnect() error {
-	c.connected = false
-	var zeroDevice bluetooth.Device
-	if c.device == zeroDevice {
-		return nil
+	// 기기를 꺼내면서 비워 두므로 두 번째 호출부터는 해제를 다시 요청하지 않습니다
+	c.mu.Lock()
+	c.closed = true
+	device := c.device
+	c.device = nil
+	c.mu.Unlock()
+
+	var err error
+	if device != nil {
+		err = device.Disconnect()
 	}
-	return c.device.Disconnect()
+	// 연결을 맺는 중이었으면 connectDevice가 그 연결을 해제할 때까지 기다림
+	c.connecting.Wait()
+	return err
 }
 
 
@@ -512,6 +576,20 @@ func (c *Client) GetStatus(timeout time.Duration) (*protocol.Status, error) {
 	return nil, errors.New("no status received within timeout")
 }
 
+// write는 CHAR2(cmdChar)에 패킷을 씁니다.
+// 클라이언트가 닫혔으면 쓰지 않고 ErrClosed를 반환합니다. Ctrl+C로 취소한 뒤
+// 연결 해제를 기다리는 사이(Linux는 2초 남짓)에 명령이 나가지 않게 하려는 것입니다.
+func (c *Client) write(pkt []byte) error {
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+	_, err := writeCharacteristic(c.cmdChar, pkt)
+	return err
+}
+
 // SetTemp는 매트의 목표 온도를 설정합니다.
 //
 // 현재 STATUS에서 현재 온도를 읽은 후, 지정된 목표 온도로 HEAT 명령을 전송합니다.
@@ -546,8 +624,7 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	// HEAT 명령 패킷 생성 및 전송
 	pkt := protocol.BuildHeat(side, st.LeftCurrentRaw, st.RightCurrentRaw, leftTgt, rightTgt)
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
-	_, err = writeCharacteristic(c.cmdChar, pkt[:])
-	if err != nil {
+	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write set_temp command: %w", err)
 	}
 	return nil
@@ -557,29 +634,11 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 //
 // 가능하면 현재 STATUS의 온도 데이터를 포함하여 전원 ON 명령을 보냅니다.
 // STATUS를 아직 받지 못한 경우(연결 직후 등)에는 온도를 0으로 설정하여 전송합니다.
-//
-// 동작 과정:
-//  1. GetStatus로 현재 온도 조회 시도 (3초 타임아웃)
-//  2. 성공: 현재 온도 포함 PowerOn 패킷 전송
-//  3. 실패: 온도=0으로 폴백 PowerOn 패킷 전송
 func (c *Client) PowerOn() error {
-	st, err := c.GetStatus(3 * time.Second)
-	if err != nil {
-		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
-		pkt := protocol.BuildPowerOn(0, 0)
-		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-		_, err = writeCharacteristic(c.cmdChar, pkt[:])
-		if err != nil {
-			return fmt.Errorf("write power_on command (fallback, status unavailable): %w", err)
-		}
-		return nil
-	}
-
-	// 현재 온도를 포함하여 전원 ON 명령 전송
-	pkt := protocol.BuildPowerOn(st.LeftCurrentRaw, st.RightCurrentRaw)
+	leftCur, rightCur := c.currentTempsRaw()
+	pkt := protocol.BuildPowerOn(leftCur, rightCur)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-	_, err = writeCharacteristic(c.cmdChar, pkt[:])
-	if err != nil {
+	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write power_on command: %w", err)
 	}
 	return nil
@@ -592,24 +651,22 @@ func (c *Client) PowerOn() error {
 //
 // PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {
-	st, err := c.GetStatus(3 * time.Second)
-	if err != nil {
-		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
-		pkt := protocol.BuildPowerOff(0, 0)
-		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-		_, err = writeCharacteristic(c.cmdChar, pkt[:])
-		if err != nil {
-			return fmt.Errorf("write power_off command (fallback, status unavailable): %w", err)
-		}
-		return nil
-	}
-
-	// 현재 온도를 포함하여 전원 OFF 명령 전송
-	pkt := protocol.BuildPowerOff(st.LeftCurrentRaw, st.RightCurrentRaw)
+	leftCur, rightCur := c.currentTempsRaw()
+	pkt := protocol.BuildPowerOff(leftCur, rightCur)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-	_, err = writeCharacteristic(c.cmdChar, pkt[:])
-	if err != nil {
+	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write power_off command: %w", err)
 	}
 	return nil
+}
+
+// currentTempsRaw는 전원 명령에 넣을 현재 온도 원시 바이트(왼쪽, 오른쪽)를 반환합니다.
+// 3초 안에 STATUS를 받지 못하면(연결 직후 등) 0, 0을 반환합니다. 전원 명령은 0이어도 동작합니다.
+func (c *Client) currentTempsRaw() (left, right byte) {
+	st, err := c.GetStatus(3 * time.Second)
+	if err != nil {
+		c.debugf("No STATUS yet, sending power command with zero temperatures")
+		return 0, 0
+	}
+	return st.LeftCurrentRaw, st.RightCurrentRaw
 }

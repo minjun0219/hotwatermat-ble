@@ -28,8 +28,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/minjun0219/hotwatermat-ble/pkg/ble"
@@ -62,7 +65,16 @@ var (
 // main은 CLI의 진입점입니다.
 // cobra 라이브러리를 사용하여 명령어를 파싱하고 실행합니다.
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	disconnectOnSignal()
+	err := rootCmd.Execute()
+	// 시그널을 받아 연결을 해제하는 중이면 핸들러가 프로세스를 끝낼 때까지 기다림.
+	// 먼저 끝나 버리면 해제가 끝나기 전에 종료되고, 시그널 대신 exit 코드로 끝남
+	select {
+	case <-interrupted:
+		time.Sleep(signalDisconnectTimeout + time.Second)
+	default:
+	}
+	if err != nil {
 		os.Exit(1)
 	}
 }
@@ -159,12 +171,16 @@ var tempCmd = &cobra.Command{
 			return fmt.Errorf("specify --left and/or --right temperature")
 		}
 
-		// 범위 검증 (28.0~48.0)
-		if leftChanged && (leftTemp < 28.0 || leftTemp > 48.0) {
-			return fmt.Errorf("left temperature must be between 28.0 and 48.0 (got %.1f)", leftTemp)
+		// 범위(28.0~48.0)와 0.5°C 단위를 연결 전에 검증 — 잘못된 값이면 BLE 스캔·연결을 기다리지 않고 바로 실패
+		if leftChanged {
+			if _, err := protocol.EncodeTemp(leftTemp); err != nil {
+				return fmt.Errorf("invalid --left: %w", err)
+			}
 		}
-		if rightChanged && (rightTemp < 28.0 || rightTemp > 48.0) {
-			return fmt.Errorf("right temperature must be between 28.0 and 48.0 (got %.1f)", rightTemp)
+		if rightChanged {
+			if _, err := protocol.EncodeTemp(rightTemp); err != nil {
+				return fmt.Errorf("invalid --right: %w", err)
+			}
 		}
 
 		client, err := connect()
@@ -386,7 +402,7 @@ var setupCmd = &cobra.Command{
 		case "2":
 			// BLE 페어링으로 GID 자동 취득
 			fmt.Println("Starting pairing... (make sure mat is in pairing mode)")
-			pairClient := ble.NewClient(selectedAddr, [6]byte{}, debug)
+			pairClient := newClient(selectedAddr, [6]byte{})
 			gid, err = pairClient.Pair()
 			pairClient.Disconnect()
 			if err != nil {
@@ -400,7 +416,7 @@ var setupCmd = &cobra.Command{
 
 		// [3/4] 연결 검증
 		fmt.Println("\n[3/4] Verifying connection...")
-		client := ble.NewClient(selectedAddr, gid, debug)
+		client := newClient(selectedAddr, gid)
 		defer client.Disconnect()
 		if err := client.Connect(); err != nil {
 			return fmt.Errorf("verification failed: %w", err)
@@ -569,14 +585,14 @@ func connect() (*ble.Client, error) {
 			return nil, fmt.Errorf("invalid cached device_gid: %w", err)
 		}
 		if debug {
-			fmt.Fprintf(os.Stderr, "Using cached device GID: %s\n", cachedConfig.DeviceGid)
+			fmt.Fprintf(os.Stderr, "Using cached device GID: %s\n", maskDeviceGid(cachedConfig.DeviceGid))
 		}
 	} else {
 		return nil, fmt.Errorf("no device GID specified. Run 'hotwatermat-ble setup' to pair, or set HOTWATERMAT_DEVICE_GID / --device-gid")
 	}
 
-	// BLE 클라이언트 생성 및 연결
-	client := ble.NewClient(address, gid, debug)
+	// BLE 클라이언트 생성 및 연결 (실패하면 Connect가 연결을 해제함)
+	client := newClient(address, gid)
 	if err := client.Connect(); err != nil {
 		return nil, err
 	}
@@ -601,6 +617,83 @@ func maskDeviceGid(gid string) string {
 		return "****"
 	}
 	return gid[:2] + "****" + gid[len(gid)-2:]
+}
+
+// clients는 시그널(Ctrl+C 등)을 받았을 때 연결을 해제해야 하는 BLE 클라이언트 목록입니다.
+// Linux(BlueZ)는 프로세스가 끝나도 BLE 연결을 유지합니다. 매트는 연결을 하나만 받으므로,
+// 해제하지 않고 종료하면 광고를 멈춰 공식 앱 등 다른 기기가 매트를 찾지 못할 수 있습니다.
+var (
+	clientsMu sync.Mutex
+	clients   []*ble.Client
+)
+
+// newClient는 시그널을 받으면 연결이 해제되도록 등록한 BLE 클라이언트를 생성합니다.
+func newClient(addr string, gid [6]byte) *ble.Client {
+	client := ble.NewClient(addr, gid, debug)
+	clientsMu.Lock()
+	clients = append(clients, client)
+	clientsMu.Unlock()
+	return client
+}
+
+// signalDisconnectTimeout은 시그널을 받은 뒤 연결 해제를 기다리는 최대 시간입니다.
+// 연결을 맺는 중이면 그 연결이 끝나야 해제할 수 있어서, 기기가 응답하지 않을 때를 대비해 상한을 둡니다.
+const signalDisconnectTimeout = 10 * time.Second
+
+// interrupted는 시그널을 받아 연결 해제를 시작하면 닫히는 채널입니다.
+var interrupted = make(chan struct{})
+
+// disconnectOnSignal은 SIGINT/SIGTERM/SIGHUP을 받으면 등록된 클라이언트의 연결을 모두 해제한 뒤
+// 같은 시그널로 종료합니다. 시그널로 종료하면 defer가 실행되지 않으므로 여기서 따로 해제합니다.
+func disconnectOnSignal() {
+	var sigs []os.Signal
+	for _, s := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP} {
+		// nohup의 SIGHUP처럼 무시하도록 실행된 시그널은 그대로 둠 (Notify가 무시 설정을 풀어 버림)
+		if !signal.Ignored(s) {
+			sigs = append(sigs, s)
+		}
+	}
+	if len(sigs) == 0 {
+		return // 인자 없는 Notify는 모든 시그널을 받으므로 호출하지 않음
+	}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, sigs...)
+
+	go func() {
+		sig := <-sigCh
+		close(interrupted)
+		// 해제가 멈추더라도 한 번 더 Ctrl+C를 누르면 바로 종료되도록 기본 동작을 되돌림
+		signal.Stop(sigCh)
+
+		// Disconnect는 이후의 쓰기를 막아 취소한 뒤에 명령이 나가지 않게 하고,
+		// 연결을 맺는 중이면 그 연결이 해제될 때까지 기다림. 기기가 응답하지 않으면 상한까지만 기다림
+		done := make(chan struct{})
+		go func() {
+			clientsMu.Lock()
+			for _, client := range clients {
+				client.Disconnect()
+			}
+			clientsMu.Unlock()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(signalDisconnectTimeout):
+		}
+
+		// 기본 동작으로 되돌린 같은 시그널을 자신에게 보내 시그널로 종료함.
+		// exit 코드로 끝내면 셸 스크립트가 Ctrl+C 뒤에도 다음 명령을 계속 실행함
+		if p, err := os.FindProcess(os.Getpid()); err == nil {
+			_ = p.Signal(sig)
+			time.Sleep(100 * time.Millisecond)
+		}
+		// 시그널을 다시 보낼 수 없는 환경(Windows 등)에서는 관례대로 128 + 시그널 번호로 종료
+		code := 1
+		if s, ok := sig.(syscall.Signal); ok {
+			code = 128 + int(s)
+		}
+		os.Exit(code)
+	}()
 }
 
 // init은 cobra 명령어의 플래그와 하위 명령을 등록합니다.

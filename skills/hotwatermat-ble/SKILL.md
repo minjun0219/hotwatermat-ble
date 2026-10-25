@@ -50,8 +50,8 @@ https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md
 - Add `--verify` to `temp`, `on` and `off` to read the status again after the command and print it.
   Prefer it: the command lines only say the packet was sent (`Power ON sent.`,
   `Temperature set: left=35.0°C right=35.0°C`), not that the mat accepted it.
-- Temperatures outside 28.0-48.0 are rejected before connecting. Only whole or half degrees are
-  accepted (`33.3` fails after connecting), so round the user's request to the nearest 0.5.
+- Temperatures outside 28.0-48.0 or not in 0.5°C steps (`33.3`) are rejected before connecting,
+  so round the user's request to the nearest 0.5.
 - `--debug` prints the BLE exchange; use it only when diagnosing a failure.
 
 ## Reading the status

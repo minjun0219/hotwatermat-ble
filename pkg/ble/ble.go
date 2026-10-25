@@ -37,6 +37,23 @@ import (
 // tinygo bluetooth 라이브러리가 제공하는 싱글턴 어댑터를 사용합니다.
 var adapter = bluetooth.DefaultAdapter
 
+// enableOnce와 enableErr는 어댑터 활성화를 프로세스당 한 번만 하기 위한 상태입니다.
+var (
+	enableOnce sync.Once
+	enableErr  error
+)
+
+// enableAdapter는 BLE 어댑터를 프로세스당 한 번만 활성화하고 그 결과를 재사용합니다.
+//
+// tinygo의 macOS 구현은 Enable을 두 번째로 부르면 "already calling Enable function" 오류를 냅니다.
+// setup이나 주소 없이 실행한 명령처럼 스캔한 뒤 연결하는 흐름은 Enable을 두 번 거치므로 한 번만 부르도록 모읍니다.
+func enableAdapter() error {
+	enableOnce.Do(func() {
+		enableErr = adapter.Enable()
+	})
+	return enableErr
+}
+
 // ScanResult는 BLE 스캔으로 발견된 기기 정보를 담는 구조체입니다.
 type ScanResult struct {
 	// Address는 BLE 기기의 MAC 주소입니다 (예: "AA:BB:CC:DD:EE:FF").
@@ -63,7 +80,7 @@ type ScanResult struct {
 // 주의: 같은 기기가 여러 번 광고하면 중복 결과가 포함될 수 있습니다.
 // 중복 제거는 호출자 측에서 처리해야 합니다.
 func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
-	if err := adapter.Enable(); err != nil {
+	if err := enableAdapter(); err != nil {
 		return nil, wrapBLEEnableError(err)
 	}
 
@@ -222,7 +239,7 @@ func (c *Client) debugf(format string, args ...any) {
 //  5. CHAR1/CHAR2 알림 구독
 //  6. 300ms 대기 (연결 안정화)
 func (c *Client) connectBLE() error {
-	if err := adapter.Enable(); err != nil {
+	if err := enableAdapter(); err != nil {
 		return wrapBLEEnableError(err)
 	}
 

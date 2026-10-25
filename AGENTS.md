@@ -23,7 +23,7 @@ those, update them in the same PR.
 ## Key Protocol Rules
 
 - **Packet size**: Always 20 bytes
-- **Temperature encoding**: `encoded = temp + 127.5` (0.5°C precision). Bit7 is NOT a heating flag.
+- **Temperature encoding**: whole degrees are sent as-is (`33.0 → 0x21`); only `x.5` values use `encoded = temp + 127.5` (`33.5 → 0xA1`). Bit7 is NOT a heating flag.
 - **Checksum**: `sum(bytes[1:19]) & 0xFF`, stored at byte[19]
 - **CHAR1** (`0100dd`): STATUS notifications only (subscribe + read)
 - **CHAR2** (`0200dd`): ALL writes (handshake, commands, power) + B2F1 auth response

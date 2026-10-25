@@ -25,6 +25,7 @@ package ble
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -202,11 +203,11 @@ func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 	}
 }
 
-// debugf는 디버그 모드일 때 로그를 출력합니다.
-// 디버그 모드가 아니면 아무것도 출력하지 않습니다.
+// debugf는 디버그 모드일 때 로그를 stderr로 출력합니다.
+// 명령 결과(stdout)와 섞이지 않게 stderr를 씁니다. 디버그 모드가 아니면 아무것도 출력하지 않습니다.
 func (c *Client) debugf(format string, args ...any) {
 	if c.debug {
-		fmt.Printf("[DEBUG] "+format+"\n", args...)
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
 	}
 }
 
@@ -372,14 +373,10 @@ deviceFound:
 			// 페어링 응답 — DeviceGid 추출
 			// DeviceGid(byte[3:9])는 민감한 인증 키이므로 로그에서 마스킹합니다.
 			c.debugf("AUTH: B2 F1 01 ** ** ** ** ** ** ... (GID masked, pairing response)")
-			// 이미 ParseAuthResponse로 authType 및 체크섬을 검증했으므로
-			// 여기서는 중복 검증 없이 DeviceGid만 직접 추출합니다.
-			if len(buf) < 9 {
-				// 잘못된 길이의 AUTH 패킷은 무시합니다.
+			gid, err := protocol.ParseDeviceGid(buf)
+			if err != nil {
 				return
 			}
-			var gid protocol.DeviceGid
-			copy(gid[:], buf[3:9])
 			c.debugf("Pairing response received")
 			select {
 			case c.pairDone <- gid:

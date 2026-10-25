@@ -75,7 +75,8 @@ Right:   30.0°C → 35.0°C
 - `Left` / `Right` are `current → target`.
 - `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
-- Lines such as `Using cached address: ...` go to stderr; parse stdout only.
+- Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to
+  stderr; parse stdout only.
 - On failure the exit code is non-zero and stderr has an `Error: ...` line.
 
 ## Rules for agents

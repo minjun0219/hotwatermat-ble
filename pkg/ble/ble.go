@@ -25,6 +25,7 @@ package ble
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -202,11 +203,11 @@ func NewClient(address string, deviceGid [6]byte, debug bool) *Client {
 	}
 }
 
-// debugf는 디버그 모드일 때 로그를 출력합니다.
-// 디버그 모드가 아니면 아무것도 출력하지 않습니다.
+// debugf는 디버그 모드일 때 로그를 stderr로 출력합니다.
+// 명령 결과(stdout)와 섞이지 않게 stderr를 씁니다. 디버그 모드가 아니면 아무것도 출력하지 않습니다.
 func (c *Client) debugf(format string, args ...any) {
 	if c.debug {
-		fmt.Printf("[DEBUG] "+format+"\n", args...)
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
 	}
 }
 
@@ -372,14 +373,10 @@ deviceFound:
 			// 페어링 응답 — DeviceGid 추출
 			// DeviceGid(byte[3:9])는 민감한 인증 키이므로 로그에서 마스킹합니다.
 			c.debugf("AUTH: B2 F1 01 ** ** ** ** ** ** ... (GID masked, pairing response)")
-			// 이미 ParseAuthResponse로 authType 및 체크섬을 검증했으므로
-			// 여기서는 중복 검증 없이 DeviceGid만 직접 추출합니다.
-			if len(buf) < 9 {
-				// 잘못된 길이의 AUTH 패킷은 무시합니다.
+			gid, err := protocol.ParseDeviceGid(buf)
+			if err != nil {
 				return
 			}
-			var gid protocol.DeviceGid
-			copy(gid[:], buf[3:9])
 			c.debugf("Pairing response received")
 			select {
 			case c.pairDone <- gid:
@@ -557,29 +554,11 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 //
 // 가능하면 현재 STATUS의 온도 데이터를 포함하여 전원 ON 명령을 보냅니다.
 // STATUS를 아직 받지 못한 경우(연결 직후 등)에는 온도를 0으로 설정하여 전송합니다.
-//
-// 동작 과정:
-//  1. GetStatus로 현재 온도 조회 시도 (3초 타임아웃)
-//  2. 성공: 현재 온도 포함 PowerOn 패킷 전송
-//  3. 실패: 온도=0으로 폴백 PowerOn 패킷 전송
 func (c *Client) PowerOn() error {
-	st, err := c.GetStatus(3 * time.Second)
-	if err != nil {
-		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
-		pkt := protocol.BuildPowerOn(0, 0)
-		c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-		_, err = writeCharacteristic(c.cmdChar, pkt[:])
-		if err != nil {
-			return fmt.Errorf("write power_on command (fallback, status unavailable): %w", err)
-		}
-		return nil
-	}
-
-	// 현재 온도를 포함하여 전원 ON 명령 전송
-	pkt := protocol.BuildPowerOn(st.LeftCurrentRaw, st.RightCurrentRaw)
+	leftCur, rightCur := c.currentTempsRaw()
+	pkt := protocol.BuildPowerOn(leftCur, rightCur)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
-	_, err = writeCharacteristic(c.cmdChar, pkt[:])
-	if err != nil {
+	if _, err := writeCharacteristic(c.cmdChar, pkt[:]); err != nil {
 		return fmt.Errorf("write power_on command: %w", err)
 	}
 	return nil
@@ -592,24 +571,22 @@ func (c *Client) PowerOn() error {
 //
 // PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {
-	st, err := c.GetStatus(3 * time.Second)
-	if err != nil {
-		// STATUS 미수신 시 온도를 0으로 설정하여 폴백 전송
-		pkt := protocol.BuildPowerOff(0, 0)
-		c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-		_, err = writeCharacteristic(c.cmdChar, pkt[:])
-		if err != nil {
-			return fmt.Errorf("write power_off command (fallback, status unavailable): %w", err)
-		}
-		return nil
-	}
-
-	// 현재 온도를 포함하여 전원 OFF 명령 전송
-	pkt := protocol.BuildPowerOff(st.LeftCurrentRaw, st.RightCurrentRaw)
+	leftCur, rightCur := c.currentTempsRaw()
+	pkt := protocol.BuildPowerOff(leftCur, rightCur)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
-	_, err = writeCharacteristic(c.cmdChar, pkt[:])
-	if err != nil {
+	if _, err := writeCharacteristic(c.cmdChar, pkt[:]); err != nil {
 		return fmt.Errorf("write power_off command: %w", err)
 	}
 	return nil
+}
+
+// currentTempsRaw는 전원 명령에 넣을 현재 온도 원시 바이트(왼쪽, 오른쪽)를 반환합니다.
+// 3초 안에 STATUS를 받지 못하면(연결 직후 등) 0, 0을 반환합니다. 전원 명령은 0이어도 동작합니다.
+func (c *Client) currentTempsRaw() (left, right byte) {
+	st, err := c.GetStatus(3 * time.Second)
+	if err != nil {
+		c.debugf("No STATUS yet, sending power command with zero temperatures")
+		return 0, 0
+	}
+	return st.LeftCurrentRaw, st.RightCurrentRaw
 }

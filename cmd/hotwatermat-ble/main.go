@@ -38,11 +38,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// scanTimeout은 BLE 기기 스캔 시간입니다.
 // version은 빌드 시 ldflags로 주입됩니다.
 // 예: go build -ldflags="-X main.version=v0.1.0"
 var version = "dev"
 
+// scanTimeout은 BLE 기기 스캔 시간입니다.
 const scanTimeout = 5 * time.Second
 
 // postCommandDelay는 명령 전송 후 매트가 처리할 시간을 확보하기 위한 대기 시간입니다.
@@ -98,12 +98,13 @@ var scanCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if len(results) == 0 {
+		devices := uniqueDevices(results)
+		if len(devices) == 0 {
 			fmt.Println("No devices found.")
 			return nil
 		}
-		// 발견된 기기 목록 출력
-		for _, r := range results {
+		// 발견된 기기 목록 출력 (신호가 강한 순)
+		for _, r := range devices {
 			fmt.Printf("  %s  %s  (RSSI: %d)\n", r.Address, r.Name, r.RSSI)
 		}
 		return nil
@@ -315,24 +316,7 @@ var setupCmd = &cobra.Command{
 			return fmt.Errorf("scan failed (check BLE permissions): %w", err)
 		}
 
-		// 중복 제거 (RSSI 기준)
-		best := make(map[string]ble.ScanResult)
-		for _, r := range results {
-			if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
-				best[r.Address] = r
-			}
-		}
-		var unique []ble.ScanResult
-		for _, r := range best {
-			unique = append(unique, r)
-		}
-		sort.Slice(unique, func(i, j int) bool {
-			if unique[i].RSSI != unique[j].RSSI {
-				return unique[i].RSSI > unique[j].RSSI
-			}
-			return unique[i].Address < unique[j].Address
-		})
-
+		unique := uniqueDevices(results)
 		if len(unique) == 0 {
 			return fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
 		}
@@ -465,6 +449,29 @@ func verifyStatus(client *ble.Client) error {
 	return nil
 }
 
+// uniqueDevices는 스캔 결과에서 주소가 같은 중복을 없애고 신호가 강한 순으로 정렬합니다.
+// 같은 기기는 광고할 때마다 결과에 다시 들어오므로 주소마다 RSSI가 가장 강한 결과만 남기고,
+// RSSI가 같으면 주소 순으로 정렬해 출력 순서를 고정합니다.
+func uniqueDevices(results []ble.ScanResult) []ble.ScanResult {
+	best := make(map[string]ble.ScanResult)
+	for _, r := range results {
+		if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
+			best[r.Address] = r
+		}
+	}
+	unique := make([]ble.ScanResult, 0, len(best))
+	for _, r := range best {
+		unique = append(unique, r)
+	}
+	sort.Slice(unique, func(i, j int) bool {
+		if unique[i].RSSI != unique[j].RSSI {
+			return unique[i].RSSI > unique[j].RSSI // 신호 강한 순
+		}
+		return unique[i].Address < unique[j].Address // 동일 RSSI면 주소 순
+	})
+	return unique
+}
+
 // connect는 CLI 플래그, 환경변수, 설정 파일을 기반으로 BLE 기기에 연결합니다.
 //
 // 기기 주소 결정 우선순위:
@@ -500,48 +507,28 @@ func connect() (*ble.Client, error) {
 
 	if address == "" {
 		// 자동 스캔으로 기기 검색 시도
-		fmt.Println("No address specified, scanning for devices...")
+		// 진행 안내는 stderr로 보내 stdout에는 명령 결과만 남김
+		fmt.Fprintln(os.Stderr, "No address specified, scanning for devices...")
 		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return nil, fmt.Errorf("auto-scan failed: %w", err)
 		}
 
-		// 중복 제거: 같은 주소의 기기 중 RSSI가 가장 강한 것만 유지
-		best := make(map[string]ble.ScanResult)
-		for _, r := range results {
-			if prev, ok := best[r.Address]; !ok || r.RSSI > prev.RSSI {
-				best[r.Address] = r
-			}
-		}
-
-		// 맵을 슬라이스로 변환
-		var unique []ble.ScanResult
-		for _, r := range best {
-			unique = append(unique, r)
-		}
-
-		// RSSI 내림차순 정렬 (신호가 강한 기기 우선)
-		sort.Slice(unique, func(i, j int) bool {
-			if unique[i].RSSI != unique[j].RSSI {
-				return unique[i].RSSI > unique[j].RSSI // 신호 강한 순
-			}
-			return unique[i].Address < unique[j].Address // 동일 RSSI면 주소 순
-		})
-
+		unique := uniqueDevices(results)
 		if len(unique) == 0 {
 			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
 		}
 		if len(unique) == 1 {
 			// 기기가 1개만 발견되면 자동 선택
 			address = unique[0].Address
-			fmt.Printf("Found device: %s (RSSI: %d)\n", address, unique[0].RSSI)
+			fmt.Fprintf(os.Stderr, "Found device: %s (RSSI: %d)\n", address, unique[0].RSSI)
 		} else {
 			// 기기가 여러 개 발견되면 사용자에게 선택 요청
-			fmt.Println("Multiple devices found:")
+			fmt.Fprintln(os.Stderr, "Multiple devices found:")
 			for i, r := range unique {
-				fmt.Printf("  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
+				fmt.Fprintf(os.Stderr, "  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
 			}
-			fmt.Println("Please specify --address to select a device.")
+			fmt.Fprintln(os.Stderr, "Please specify --address to select a device.")
 			return nil, fmt.Errorf("multiple devices found, specify --address")
 		}
 	}

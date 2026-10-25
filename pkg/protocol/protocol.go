@@ -183,7 +183,9 @@ func EncodeTemp(temp float64) (byte, error) {
 //   - 바이트 값 > 127: 소수점 온도 → byte - 127.5 (예: 161 → 33.5°C)
 //   - 바이트 값 ≤ 127: 정수 온도 → 그대로 (예: 33 → 33.0°C)
 //
-// EncodeTemp의 역함수입니다. EncodeTemp(DecodeTemp(b)) == b가 항상 성립합니다.
+// EncodeTemp의 역함수입니다. EncodeTemp가 만들 수 있는 바이트(28.0~48.0°C)에 한해
+// EncodeTemp(DecodeTemp(b)) == b가 성립합니다. 범위 밖 바이트(예: 전원 OFF의 0)는
+// 디코딩은 되지만 다시 인코딩하면 오류입니다.
 func DecodeTemp(b byte) float64 {
 	if b > 127 {
 		// 상위 비트가 설정된 경우: 0.5도 소수점 온도
@@ -201,8 +203,7 @@ func DecodeTemp(b byte) float64 {
 // 예시: 핸드셰이크 패킷
 //
 //	B2 01 FE FE FE FE FE FE FE FE FE FE FE FE FE FE FE FE FE [DF]
-//	sum(01 + FE*17) = 0x01 + 0x10E2 = 0x10E3 → 0xE3... 아니, 실제로는
-//	sum = 0x01 + 17*0xFE = 1 + 4318 = 4319 → 4319 & 0xFF = 0xDF ✓
+//	sum = 0x01 + 17*0xFE = 1 + 4318 = 4319 (0x10DF) → 0x10DF & 0xFF = 0xDF
 func CalcChecksum(pkt []byte) byte {
 	if len(pkt) < PacketSize {
 		return 0

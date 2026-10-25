@@ -127,7 +127,6 @@ const (
 	Pad byte = 0xFE
 )
 
-
 // ModeNames는 모드 바이트 값을 읽기 쉬운 이름으로 매핑합니다.
 // 예: 0x01 → "HEAT", 0x06 → "POWER"
 var ModeNames = map[byte]string{
@@ -294,20 +293,20 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
-	pkt[1] = DirAppToMat        // 앱 → 매트 방향
-	pkt[2] = ModeHeat            // 난방 모드 (0x01)
-	pkt[3] = side                // 좌/우 선택
-	pkt[4] = 0x00                // 볼륨/수위 (난방 명령에서는 0)
-	pkt[5] = 0x02                // HEAT 모드 고정값
-	pkt[6] = 0x25                // HEAT 모드 고정값
-	pkt[7] = leftCur             // 왼쪽 현재 온도 (STATUS에서 받은 원시 바이트)
-	pkt[8] = rightCur            // 오른쪽 현재 온도 (STATUS에서 받은 원시 바이트)
-	pkt[9] = 0x23                // HEAT 모드 고정값
-	pkt[10] = leftTarget         // 왼쪽 목표 온도 (EncodeTemp로 인코딩된 값)
-	pkt[11] = rightTarget        // 오른쪽 목표 온도 (EncodeTemp로 인코딩된 값)
-	pkt[12] = Pad                // 패딩
+	pkt[1] = DirAppToMat  // 앱 → 매트 방향
+	pkt[2] = ModeHeat     // 난방 모드 (0x01)
+	pkt[3] = side         // 좌/우 선택
+	pkt[4] = 0x00         // 볼륨/수위 (난방 명령에서는 0)
+	pkt[5] = 0x02         // HEAT 모드 고정값
+	pkt[6] = 0x25         // HEAT 모드 고정값
+	pkt[7] = leftCur      // 왼쪽 현재 온도 (STATUS에서 받은 원시 바이트)
+	pkt[8] = rightCur     // 오른쪽 현재 온도 (STATUS에서 받은 원시 바이트)
+	pkt[9] = 0x23         // HEAT 모드 고정값
+	pkt[10] = leftTarget  // 왼쪽 목표 온도 (EncodeTemp로 인코딩된 값)
+	pkt[11] = rightTarget // 오른쪽 목표 온도 (EncodeTemp로 인코딩된 값)
+	pkt[12] = Pad         // 패딩
 	for i := 13; i < 19; i++ {
-		pkt[i] = Pad             // 나머지 패딩
+		pkt[i] = Pad // 나머지 패딩
 	}
 	pkt[19] = CalcChecksum(pkt[:]) // 체크섬 계산 및 설정
 	return pkt
@@ -331,20 +330,20 @@ func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [Pack
 func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
-	pkt[1] = DirAppToMat     // 앱 → 매트 방향
-	pkt[2] = ModePower        // 전원 제어 모드 (0x06)
-	pkt[3] = SideBoth         // 양쪽 모두 (전원은 항상 양쪽)
+	pkt[1] = DirAppToMat // 앱 → 매트 방향
+	pkt[2] = ModePower   // 전원 제어 모드 (0x06)
+	pkt[3] = SideBoth    // 양쪽 모두 (전원은 항상 양쪽)
 	pkt[4] = 0x00
 	pkt[5] = Pad
-	pkt[6] = 0x2B             // ON 마커 — 이 값이 전원 켜기를 의미함
-	pkt[7] = leftCur          // 왼쪽 현재 온도
-	pkt[8] = rightCur         // 오른쪽 현재 온도
+	pkt[6] = 0x2B     // ON 마커 — 이 값이 전원 켜기를 의미함
+	pkt[7] = leftCur  // 왼쪽 현재 온도
+	pkt[8] = rightCur // 오른쪽 현재 온도
 	pkt[9] = Pad
 	for i := 10; i < 16; i++ {
-		pkt[i] = 0x00         // 0으로 채움
+		pkt[i] = 0x00 // 0으로 채움
 	}
 	for i := 16; i < 19; i++ {
-		pkt[i] = Pad          // 패딩
+		pkt[i] = Pad // 패딩
 	}
 	pkt[19] = CalcChecksum(pkt[:])
 	return pkt
@@ -368,21 +367,21 @@ func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
 func BuildPowerOff(leftCur, rightCur byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
-	pkt[1] = DirAppToMat      // 앱 → 매트 방향
-	pkt[2] = ModePower         // 전원 제어 모드 (0x06)
-	pkt[3] = SideRight         // 0x04 — PROTOCOL.md 사양에 따른 값
+	pkt[1] = DirAppToMat // 앱 → 매트 방향
+	pkt[2] = ModePower   // 전원 제어 모드 (0x06)
+	pkt[3] = SideRight   // 0x04 — PROTOCOL.md 사양에 따른 값
 	pkt[4] = 0x00
 	pkt[5] = Pad
-	pkt[6] = 0xAB              // OFF 마커 — 이 값이 전원 끄기를 의미함
-	pkt[7] = leftCur           // 왼쪽 현재 온도
-	pkt[8] = rightCur          // 오른쪽 현재 온도
+	pkt[6] = 0xAB     // OFF 마커 — 이 값이 전원 끄기를 의미함
+	pkt[7] = leftCur  // 왼쪽 현재 온도
+	pkt[8] = rightCur // 오른쪽 현재 온도
 	pkt[9] = Pad
 	pkt[10] = 0x00
-	pkt[11] = rightCur         // 오른쪽 현재 온도 (반복)
+	pkt[11] = rightCur // 오른쪽 현재 온도 (반복)
 	pkt[12] = Pad
-	pkt[13] = rightCur         // 오른쪽 현재 온도 (반복)
+	pkt[13] = rightCur // 오른쪽 현재 온도 (반복)
 	for i := 14; i < 19; i++ {
-		pkt[i] = Pad           // 패딩
+		pkt[i] = Pad // 패딩
 	}
 	pkt[19] = CalcChecksum(pkt[:])
 	return pkt

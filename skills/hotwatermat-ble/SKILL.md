@@ -2,7 +2,7 @@
 name: hotwatermat-ble
 description: Control a BLE hot water mat (온수매트, BLE name KDO_HotWaterMat, model EQM555) from the terminal with the hotwatermat-ble CLI — read its status (current and target temperature per side, mode, water level), set the left/right target temperature (28.0-48.0°C, 0.5°C steps), and power it on or off, with no vendor app, Wi-Fi or cloud. Use when the user asks to turn the mat (매트, 온수매트) on or off, warm it up or cool it down, check how warm it is or whether the water is low, or to script or schedule the mat; also when working with the Go packages in github.com/minjun0219/hotwatermat-ble.
 license: MIT
-compatibility: macOS (amd64, arm64; CoreBluetooth) or Linux (amd64 release binary; BlueZ over D-Bus) with a Bluetooth LE adapter in range of the mat. Windows only through WSL. Building from source needs Go 1.22+ with cgo.
+compatibility: macOS (amd64, arm64; CoreBluetooth) or Linux (amd64, arm64 release binaries; BlueZ over D-Bus) with a Bluetooth LE adapter in range of the mat. Windows only through WSL. Building from source needs Go 1.22+ (with cgo on macOS).
 ---
 
 # hotwatermat-ble
@@ -21,7 +21,7 @@ https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md
    ```
 
    It installs into `~/.local/bin` (override with `INSTALL_DIR`). Release binaries exist for macOS
-   amd64/arm64 and Linux amd64; elsewhere build from source:
+   amd64/arm64 and Linux amd64/arm64; elsewhere build from source:
    `go build -o hotwatermat-ble ./cmd/hotwatermat-ble/`.
 
 2. Check that the device is configured. The CLI needs a BLE address and a DeviceGid (a 12-character

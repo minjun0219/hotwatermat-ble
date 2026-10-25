@@ -41,6 +41,7 @@ sudo mv hotwatermat-ble /usr/local/bin/
 | macOS | amd64 (Intel) | `hotwatermat-ble_VERSION_darwin_amd64.tar.gz` |
 | macOS | arm64 (Apple Silicon) | `hotwatermat-ble_VERSION_darwin_arm64.tar.gz` |
 | Linux | amd64 | `hotwatermat-ble_VERSION_linux_amd64.tar.gz` |
+| Linux | arm64 (Raspberry Pi 등) | `hotwatermat-ble_VERSION_linux_arm64.tar.gz` |
 
 ### macOS 설정
 

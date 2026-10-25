@@ -57,9 +57,10 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 
 ### CI
 
-- `test.yml`: Runs `go test` + `go vet` on protocol package, and validates `context7.json` against the Context7 schema
-- `claude-review.yml`: Claude Code auto-review on human PRs (skips bot PRs)
-- `release.yml`: Multi-platform binary release on tag push
+- `test.yml`: gofmt check, `go vet ./...` + `go build ./...` (Linux, cgo off), `go test` on the protocol package, and validates `context7.json` against the Context7 schema
+- `claude-code-review.yml`: Claude Code auto-review on every PR
+- `claude.yml`: Runs Claude Code when an owner/member/collaborator mentions `@claude` in an issue or PR
+- `release.yml`: Binary release on tag push (darwin amd64/arm64, linux amd64/arm64)
 
 ## Trademark Policy
 

@@ -143,7 +143,7 @@ hotwatermat-ble temp --left 35 --right 35 --verify --json
 ```
 
 한쪽이 '운전 대기' 상태면 `status`는 그쪽 현재 온도만 `Right:   25.0°C (standby)`처럼 보여 주고, `--json`에서는 그쪽에 `"standby":true`가 붙습니다.
-이때 `target`은 매트에 남아 있는 마지막 설정값입니다. 지금은 오른쪽 대기만 구분합니다.
+이때 `target`은 매트에 남아 있는 마지막 설정값입니다.
 
 실패하면 종료 코드는 1이고, stdout에 `{"code":"…","error":"…"}`가 출력됩니다. `code`로 실패 원인을 구분할 수 있습니다.
 

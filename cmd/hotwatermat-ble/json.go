@@ -106,7 +106,7 @@ func newStatusJSON(st *protocol.Status) *statusJSON {
 		Mode:  st.ModeName,
 		Side:  protocol.SideName(st.Side),
 		Water: protocol.WaterLevelName(st.WaterLevel),
-		Left:  &sideJSON{Current: st.LeftCurrent, Target: st.LeftTarget},
+		Left:  &sideJSON{Current: st.LeftCurrent, Target: st.LeftTarget, Standby: st.LeftStandby},
 		Right: &sideJSON{Current: st.RightCurrent, Target: st.RightTarget, Standby: st.RightStandby},
 	}
 }

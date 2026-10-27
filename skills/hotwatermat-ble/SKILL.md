@@ -73,8 +73,7 @@ Right:   30.0°C → 35.0°C
 ```
 
 - `Left` / `Right` are `current → target`. A side in standby (switched on in the app but not
-  running) prints only its current temperature, e.g. `Right:   25.0°C (standby)`. Detection covers
-  the right side only for now.
+  running) prints only its current temperature, e.g. `Right:   25.0°C (standby)`.
 - `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
 - Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to

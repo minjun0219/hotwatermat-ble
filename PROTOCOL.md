@@ -39,11 +39,11 @@ Byte  Field          Description
 [4]   Vol/Water      (volume << 4) | water_level
 [5]   Field5         0x02=HEAT, 0xFE=POWER commands
 [6]   Field6         0x25=HEAT, 0x2B=POWER ON, 0xAB=POWER OFF
-[7]   LeftCurrent    Left current confirmed temp (copy from STATUS)
-[8]   RightCurrent   Right current confirmed temp (copy from STATUS)
+[7]   LeftSet        Left set (target) temp — commands copy it from STATUS byte[7]
+[8]   RightSet       Right set (target) temp — commands copy it from STATUS byte[8]
 [9]   Field9         0x23=HEAT, 0xFE=POWER
-[10]  LeftTarget     Left new target temperature
-[11]  RightTarget    Right new target temperature
+[10]  Left temp      Commands: left new target temp / STATUS: left current temp
+[11]  Right temp     Commands: right new target temp / STATUS: right current temp
 [12]  SubCmd         Subcommand (FASTHEAT on/off, SLEEP timer, etc.)
 [13‑18] Padding      0xFE
 [19]  Checksum       See checksum algorithm below
@@ -107,10 +107,10 @@ def decode_temp(byte_val: int) -> float:
 Set target temperature for one or both sides.
 
 ```
-B2 80 01 [side] 00 02 25 [L_cur] [R_cur] 23 [L_tgt] [R_tgt] FE FE FE FE FE FE FE [checksum]
+B2 80 01 [side] 00 02 25 [L_set] [R_set] 23 [L_tgt] [R_tgt] FE FE FE FE FE FE FE [checksum]
 ```
 
-- `byte[7-8]`: Copy current temps from latest STATUS packet (raw byte, no modification)
+- `byte[7-8]`: Copy the set temps (STATUS byte[7-8]) from the latest STATUS packet (raw byte, no modification)
 - `byte[10-11]`: New target temps using 0.5°C encoding
 
 **Example: Left 33°C → 34°C**
@@ -130,7 +130,7 @@ B2 80 01 02 00 02 25 21 1C 23 A1 1C FE FE FE FE FE FE FE B9
 ### Power ON
 
 ```
-B2 80 06 06 00 FE 2B [L_cur] [R_cur] FE 00 00 00 00 00 00 FE FE FE [checksum]
+B2 80 06 06 00 FE 2B [L_set] [R_set] FE 00 00 00 00 00 00 FE FE FE [checksum]
                   ^^
               0x2B = ON
 ```
@@ -140,7 +140,7 @@ Mat restores previous temperature targets automatically.
 ### Power OFF
 
 ```
-B2 80 06 04 00 FE AB [L_cur] [R_cur] FE 00 [R_cur] FE [R_cur] FE FE FE FE [checksum]
+B2 80 06 04 00 FE AB [L_set] [R_set] FE 00 [R_set] FE [R_set] FE FE FE FE [checksum]
                   ^^
               0xAB = OFF
 ```
@@ -191,16 +191,18 @@ Verified against APK source (`md/a.java`).
 Sent on CHAR1, ~1 per second while connected.
 
 ```
-B2 00 [mode] [side] [vol/water] [field5] [field6] [L_cur] [R_cur] [field9] [L_tgt] [R_tgt] [sub] [extra...] [checksum]
+B2 00 [mode] [side] [vol/water] [field5] [field6] [L_set] [R_set] [field9] [L_cur] [R_cur] [sub] [extra...] [checksum]
 ```
 
+- `byte[7-8]` (`L_set`, `R_set`): set (target) temperature
+- `byte[10-11]` (`L_cur`, `R_cur`): current water temperature
 - Temperature bytes use the same 0.5°C encoding
-- `mode=0x06` + `L_tgt=0` + `R_tgt=0` → power OFF state
+- `mode=0x06` + `byte[10]=0` + `byte[11]=0` → power OFF state
 
 ## Implementation Notes
 
 1. **CHAR2 for all writes** — handshake AND commands both go to CHAR2
-2. **Copy current temps** — always copy byte[7-8] from latest STATUS when building commands
+2. **Copy set temps** — always copy byte[7-8] (set temps) from latest STATUS when building commands
 3. **Short connections** — official app uses connect/command/disconnect cycles, not persistent connections
 4. **No BLE bonding** — all auth is application-level via DeviceGid handshake
 5. **Write with response** — use `write_gatt_char(..., response=True)` for reliability

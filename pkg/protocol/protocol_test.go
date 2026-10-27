@@ -306,10 +306,10 @@ func TestBuildPowerOff(t *testing.T) {
 
 // TestParseStatus는 STATUS 알림 패킷 파싱을 테스트합니다.
 //
-// 시뮬레이션 패킷: HEAT 모드, 양쪽 활성, 왼쪽 33°C, 오른쪽 28°C
-// 파싱된 Status 구조체의 각 필드가 올바른지 검증합니다.
+// 시뮬레이션 패킷: HEAT 모드, 양쪽 활성, 설정 왼쪽 33°C / 오른쪽 28°C,
+// 현재 왼쪽 27°C / 오른쪽 27.5°C.
+// STATUS는 byte[7..8]에 설정(목표) 온도, byte[10..11]에 현재 온도를 담습니다 (#54).
 func TestParseStatus(t *testing.T) {
-	// 테스트용 STATUS 패킷 생성: mode=HEAT, side=both, left=33°C, right=28°C
 	pkt := []byte{
 		0xB2,                               // [0] STX
 		0x00,                               // [1] 매트→앱 방향 (STATUS)
@@ -318,11 +318,11 @@ func TestParseStatus(t *testing.T) {
 		0x22,                               // [4] 볼륨(상위4비트=2) + 수위(하위4비트=2=OK)
 		0x02,                               // [5] 모드별 고정값
 		0x25,                               // [6] 모드별 고정값
-		0x21,                               // [7] 왼쪽 현재 온도 = 33°C
-		0x1C,                               // [8] 오른쪽 현재 온도 = 28°C
+		0x21,                               // [7] 왼쪽 설정 온도 = 33°C
+		0x1C,                               // [8] 오른쪽 설정 온도 = 28°C
 		0x23,                               // [9] 모드별 고정값
-		0x21,                               // [10] 왼쪽 목표 온도 = 33°C
-		0x1C,                               // [11] 오른쪽 목표 온도 = 28°C
+		0x1B,                               // [10] 왼쪽 현재 온도 = 27°C
+		0x9B,                               // [11] 오른쪽 현재 온도 = 27.5°C
 		0xFE,                               // [12] 패딩
 		0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, // [13..18] 패딩
 		0x00, // [19] 체크섬 (아래에서 계산)
@@ -343,20 +343,41 @@ func TestParseStatus(t *testing.T) {
 	if st.Side != SideBoth {
 		t.Errorf("Side = 0x%02X", st.Side)
 	}
-	if st.LeftCurrent != 33.0 {
-		t.Errorf("LeftCurrent = %.1f, want 33.0", st.LeftCurrent)
+	if st.LeftTarget != 33.0 {
+		t.Errorf("LeftTarget = %.1f, want 33.0", st.LeftTarget)
 	}
-	if st.RightCurrent != 28.0 {
-		t.Errorf("RightCurrent = %.1f, want 28.0", st.RightCurrent)
+	if st.RightTarget != 28.0 {
+		t.Errorf("RightTarget = %.1f, want 28.0", st.RightTarget)
+	}
+	if st.LeftCurrent != 27.0 {
+		t.Errorf("LeftCurrent = %.1f, want 27.0", st.LeftCurrent)
+	}
+	if st.RightCurrent != 27.5 {
+		t.Errorf("RightCurrent = %.1f, want 27.5", st.RightCurrent)
+	}
+	// 명령에 복사할 원시 바이트는 byte[7..8] (설정 온도)
+	if st.LeftTargetRaw != 0x21 || st.RightTargetRaw != 0x1C {
+		t.Errorf("TargetRaw = 0x%02X/0x%02X, want 0x21/0x1C", st.LeftTargetRaw, st.RightTargetRaw)
+	}
+	if st.LeftCurrentRaw != 0x1B || st.RightCurrentRaw != 0x9B {
+		t.Errorf("CurrentRaw = 0x%02X/0x%02X, want 0x1B/0x9B", st.LeftCurrentRaw, st.RightCurrentRaw)
 	}
 	if st.PoweredOff {
 		t.Error("PoweredOff should be false")
+	}
+
+	// 설정 온도 바이트를 그대로 복사한 HEAT 명령은 PROTOCOL.md 예시(왼쪽 33°C → 34°C)와 같아야 함
+	tgt, _ := EncodeTemp(34.0)
+	heat := BuildHeat(SideLeft, st.LeftTargetRaw, st.RightTargetRaw, tgt, st.RightTargetRaw)
+	want := "B2 80 01 02 00 02 25 21 1C 23 22 1C FE FE FE FE FE FE FE 3A"
+	if got := FormatPacket(heat[:]); got != want {
+		t.Errorf("HEAT = %s, want %s", got, want)
 	}
 }
 
 // TestParseStatusPowerOff는 전원 꺼짐 상태의 STATUS 패킷 파싱을 테스트합니다.
 //
-// Mode가 POWER(0x06)이고 목표 온도(byte[10], byte[11])가 모두 0이면
+// Mode가 POWER(0x06)이고 byte[10], byte[11]이 모두 0이면
 // PoweredOff = true로 판단되어야 합니다.
 func TestParseStatusPowerOff(t *testing.T) {
 	// 전원 꺼짐 상태 패킷: mode=POWER, 목표온도=0/0

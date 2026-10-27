@@ -11,11 +11,11 @@
 //	[3]     좌/우 선택 - 0x02: 왼쪽, 0x04: 오른쪽, 0x06: 양쪽
 //	[4]     볼륨(상위4비트) + 수위(하위4비트)
 //	[5-6]   모드별 고정값
-//	[7]     왼쪽 현재 온도 (인코딩된 바이트)
-//	[8]     오른쪽 현재 온도 (인코딩된 바이트)
+//	[7]     왼쪽 설정(목표) 온도 (인코딩된 바이트) — 명령에서는 직전 설정값을 그대로 복사
+//	[8]     오른쪽 설정(목표) 온도 (인코딩된 바이트) — 명령에서는 직전 설정값을 그대로 복사
 //	[9]     모드별 고정값
-//	[10]    왼쪽 목표 온도 (인코딩된 바이트)
-//	[11]    오른쪽 목표 온도 (인코딩된 바이트)
+//	[10]    왼쪽 온도 — 명령: 새 목표 온도, STATUS: 현재 온도
+//	[11]    오른쪽 온도 — 명령: 새 목표 온도, STATUS: 현재 온도
 //	[12-18] 패딩 또는 추가 데이터
 //	[19]    체크섬 - bytes[1:19]의 합을 0xFF로 AND 연산한 값
 package protocol
@@ -268,12 +268,12 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 // BuildHeat는 난방(HEAT) 명령 패킷을 생성합니다.
 //
 // 매트의 목표 온도를 설정하는 핵심 명령입니다.
-// 반드시 현재 STATUS에서 받은 현재 온도 바이트(raw)를 함께 전달해야 합니다.
+// 반드시 최신 STATUS에서 받은 설정 온도 바이트(raw, byte[7..8])를 함께 전달해야 합니다.
 //
 // 매개변수:
 //   - side: 좌/우 선택 (SideLeft=0x02, SideRight=0x04, SideBoth=0x06)
-//   - leftCur: 왼쪽 현재 온도 (STATUS 패킷의 byte[7] 원시값)
-//   - rightCur: 오른쪽 현재 온도 (STATUS 패킷의 byte[8] 원시값)
+//   - leftSet: 왼쪽 직전 설정 온도 (STATUS 패킷의 byte[7] 원시값, Status.LeftTargetRaw)
+//   - rightSet: 오른쪽 직전 설정 온도 (STATUS 패킷의 byte[8] 원시값, Status.RightTargetRaw)
 //   - leftTarget: 왼쪽 목표 온도 (EncodeTemp로 인코딩한 값)
 //   - rightTarget: 오른쪽 목표 온도 (EncodeTemp로 인코딩한 값)
 //
@@ -281,7 +281,7 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 //
 //	[0]=0xB2(STX) [1]=0x80(앱→매트) [2]=0x01(HEAT) [3]=side
 //	[4]=0x00(볼륨/수위) [5]=0x02(HEAT고정) [6]=0x25(HEAT고정)
-//	[7]=leftCur [8]=rightCur [9]=0x23(HEAT고정)
+//	[7]=leftSet [8]=rightSet [9]=0x23(HEAT고정)
 //	[10]=leftTarget [11]=rightTarget [12..18]=0xFE(패딩)
 //	[19]=체크섬
 //
@@ -290,8 +290,8 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 //	// 왼쪽 매트를 33°C에서 34°C로 변경
 //	leftTgt, _ := protocol.EncodeTemp(34.0)  // → 34 (0x22)
 //	rightTgt, _ := protocol.EncodeTemp(28.0) // → 28 (0x1C)
-//	pkt := protocol.BuildHeat(SideLeft, status.LeftCurrentRaw, status.RightCurrentRaw, leftTgt, rightTgt)
-func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [PacketSize]byte {
+//	pkt := protocol.BuildHeat(SideLeft, status.LeftTargetRaw, status.RightTargetRaw, leftTgt, rightTgt)
+func BuildHeat(side byte, leftSet, rightSet, leftTarget, rightTarget byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
 	pkt[1] = DirAppToMat  // 앱 → 매트 방향
@@ -300,8 +300,8 @@ func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [Pack
 	pkt[4] = 0x00         // 볼륨/수위 (난방 명령에서는 0)
 	pkt[5] = 0x02         // HEAT 모드 고정값
 	pkt[6] = 0x25         // HEAT 모드 고정값
-	pkt[7] = leftCur      // 왼쪽 현재 온도 (STATUS에서 받은 원시 바이트)
-	pkt[8] = rightCur     // 오른쪽 현재 온도 (STATUS에서 받은 원시 바이트)
+	pkt[7] = leftSet      // 왼쪽 직전 설정 온도 (STATUS byte[7] 원시 바이트)
+	pkt[8] = rightSet     // 오른쪽 직전 설정 온도 (STATUS byte[8] 원시 바이트)
 	pkt[9] = 0x23         // HEAT 모드 고정값
 	pkt[10] = leftTarget  // 왼쪽 목표 온도 (EncodeTemp로 인코딩된 값)
 	pkt[11] = rightTarget // 오른쪽 목표 온도 (EncodeTemp로 인코딩된 값)
@@ -316,19 +316,19 @@ func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [Pack
 // BuildPowerOn은 전원 켜기(Power ON) 명령 패킷을 생성합니다.
 //
 // 매트의 전원을 켤 때 사용합니다.
-// 가능하면 최신 STATUS에서 받은 현재 온도를 전달해야 하지만,
+// 가능하면 최신 STATUS에서 받은 설정 온도를 전달해야 하지만,
 // STATUS를 아직 받지 못한 경우 0을 넣어도 동작합니다.
 //
 // 매개변수:
-//   - leftCur: 왼쪽 현재 온도 (STATUS 패킷의 byte[7] 원시값, 없으면 0)
-//   - rightCur: 오른쪽 현재 온도 (STATUS 패킷의 byte[8] 원시값, 없으면 0)
+//   - leftSet: 왼쪽 설정 온도 (STATUS 패킷의 byte[7] 원시값, 없으면 0)
+//   - rightSet: 오른쪽 설정 온도 (STATUS 패킷의 byte[8] 원시값, 없으면 0)
 //
 // 패킷 구조:
 //
 //	[0]=0xB2 [1]=0x80 [2]=0x06(POWER) [3]=0x06(양쪽)
-//	[4]=0x00 [5]=0xFE [6]=0x2B(ON 마커) [7]=leftCur [8]=rightCur
+//	[4]=0x00 [5]=0xFE [6]=0x2B(ON 마커) [7]=leftSet [8]=rightSet
 //	[9]=0xFE [10..15]=0x00 [16..18]=0xFE [19]=체크섬
-func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
+func BuildPowerOn(leftSet, rightSet byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
 	pkt[1] = DirAppToMat // 앱 → 매트 방향
@@ -337,8 +337,8 @@ func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
 	pkt[4] = 0x00
 	pkt[5] = Pad
 	pkt[6] = 0x2B     // ON 마커 — 이 값이 전원 켜기를 의미함
-	pkt[7] = leftCur  // 왼쪽 현재 온도
-	pkt[8] = rightCur // 오른쪽 현재 온도
+	pkt[7] = leftSet  // 왼쪽 설정 온도
+	pkt[8] = rightSet // 오른쪽 설정 온도
 	pkt[9] = Pad
 	for i := 10; i < 16; i++ {
 		pkt[i] = 0x00 // 0으로 채움
@@ -356,16 +356,16 @@ func BuildPowerOn(leftCur, rightCur byte) [PacketSize]byte {
 // BLE를 통해 다시 전원을 켤 수 있습니다 (물리 버튼 불필요).
 //
 // 매개변수:
-//   - leftCur: 왼쪽 현재 온도 (STATUS 패킷의 byte[7] 원시값, 없으면 0)
-//   - rightCur: 오른쪽 현재 온도 (STATUS 패킷의 byte[8] 원시값, 없으면 0)
+//   - leftSet: 왼쪽 설정 온도 (STATUS 패킷의 byte[7] 원시값, 없으면 0)
+//   - rightSet: 오른쪽 설정 온도 (STATUS 패킷의 byte[8] 원시값, 없으면 0)
 //
 // 패킷 구조:
 //
 //	[0]=0xB2 [1]=0x80 [2]=0x06(POWER) [3]=0x04(오른쪽, PROTOCOL.md 기준)
-//	[4]=0x00 [5]=0xFE [6]=0xAB(OFF 마커) [7]=leftCur [8]=rightCur
-//	[9]=0xFE [10]=0x00 [11]=rightCur [12]=0xFE [13]=rightCur
+//	[4]=0x00 [5]=0xFE [6]=0xAB(OFF 마커) [7]=leftSet [8]=rightSet
+//	[9]=0xFE [10]=0x00 [11]=rightSet [12]=0xFE [13]=rightSet
 //	[14..18]=0xFE [19]=체크섬
-func BuildPowerOff(leftCur, rightCur byte) [PacketSize]byte {
+func BuildPowerOff(leftSet, rightSet byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
 	pkt[1] = DirAppToMat // 앱 → 매트 방향
@@ -374,13 +374,13 @@ func BuildPowerOff(leftCur, rightCur byte) [PacketSize]byte {
 	pkt[4] = 0x00
 	pkt[5] = Pad
 	pkt[6] = 0xAB     // OFF 마커 — 이 값이 전원 끄기를 의미함
-	pkt[7] = leftCur  // 왼쪽 현재 온도
-	pkt[8] = rightCur // 오른쪽 현재 온도
+	pkt[7] = leftSet  // 왼쪽 설정 온도
+	pkt[8] = rightSet // 오른쪽 설정 온도
 	pkt[9] = Pad
 	pkt[10] = 0x00
-	pkt[11] = rightCur // 오른쪽 현재 온도 (반복)
+	pkt[11] = rightSet // 오른쪽 설정 온도 (반복)
 	pkt[12] = Pad
-	pkt[13] = rightCur // 오른쪽 현재 온도 (반복)
+	pkt[13] = rightSet // 오른쪽 설정 온도 (반복)
 	for i := 14; i < 19; i++ {
 		pkt[i] = Pad // 패딩
 	}
@@ -415,12 +415,18 @@ type Status struct {
 	// Field6은 byte[6]의 원시값입니다 (모드별로 의미가 다름).
 	Field6 byte
 
-	// LeftCurrentRaw는 왼쪽 현재 온도의 인코딩된 원시 바이트입니다.
-	// 명령 패킷 생성 시 이 값을 그대로 전달해야 합니다.
+	// LeftTargetRaw는 왼쪽 설정(목표) 온도의 인코딩된 원시 바이트입니다 (byte[7]).
+	// 명령 패킷 생성 시 이 값을 byte[7]에 그대로 전달해야 합니다.
+	LeftTargetRaw byte
+
+	// RightTargetRaw는 오른쪽 설정(목표) 온도의 인코딩된 원시 바이트입니다 (byte[8]).
+	// 명령 패킷 생성 시 이 값을 byte[8]에 그대로 전달해야 합니다.
+	RightTargetRaw byte
+
+	// LeftCurrentRaw는 왼쪽 현재 온도의 인코딩된 원시 바이트입니다 (byte[10]).
 	LeftCurrentRaw byte
 
-	// RightCurrentRaw는 오른쪽 현재 온도의 인코딩된 원시 바이트입니다.
-	// 명령 패킷 생성 시 이 값을 그대로 전달해야 합니다.
+	// RightCurrentRaw는 오른쪽 현재 온도의 인코딩된 원시 바이트입니다 (byte[11]).
 	RightCurrentRaw byte
 
 	// LeftCurrent는 왼쪽 현재 온도입니다 (디코딩된 실제 °C 값).
@@ -442,7 +448,7 @@ type Status struct {
 	Raw [PacketSize]byte
 
 	// PoweredOff는 매트의 전원이 꺼져 있는지 여부입니다.
-	// Mode가 POWER이고 목표 온도가 양쪽 모두 0이면 전원이 꺼진 것으로 판단합니다.
+	// Mode가 POWER이고 byte[10], byte[11]이 모두 0이면 전원이 꺼진 것으로 판단합니다.
 	PoweredOff bool
 }
 
@@ -483,19 +489,21 @@ func ParseStatus(data []byte) (*Status, error) {
 	vol := int(data[4]>>4) & 0x0F
 	wlv := int(data[4]) & 0x0F
 
-	// 현재 온도 원시 바이트 (명령 전송 시 그대로 사용)
-	leftCurRaw := data[7]
-	rightCurRaw := data[8]
+	// 설정(목표) 온도 원시 바이트 (byte[7], byte[8]) — 명령 전송 시 그대로 사용
+	leftTargetRaw := data[7]
+	rightTargetRaw := data[8]
 
-	// 목표 온도 디코딩 (byte[10], byte[11])
-	leftTarget := DecodeTemp(data[10])
-	rightTarget := DecodeTemp(data[11])
+	// 현재 온도 원시 바이트 (byte[10], byte[11])
+	leftCurRaw := data[10]
+	rightCurRaw := data[11]
 
-	// 현재 온도 디코딩 (0.5°C 인코딩 적용)
+	// 온도 디코딩 (0.5°C 인코딩 적용)
+	leftTarget := DecodeTemp(leftTargetRaw)
+	rightTarget := DecodeTemp(rightTargetRaw)
 	leftCur := DecodeTemp(leftCurRaw)
 	rightCur := DecodeTemp(rightCurRaw)
 
-	// 전원 꺼짐 판단: POWER 모드이고 목표 온도가 양쪽 모두 0이면 OFF
+	// 전원 꺼짐 판단: POWER 모드이고 byte[10], byte[11]이 양쪽 모두 0이면 OFF
 	poweredOff := mode == ModePower && data[10] == 0 && data[11] == 0
 
 	var raw [PacketSize]byte
@@ -509,6 +517,8 @@ func ParseStatus(data []byte) (*Status, error) {
 		WaterLevel:      wlv,
 		Field5:          data[5],
 		Field6:          data[6],
+		LeftTargetRaw:   leftTargetRaw,
+		RightTargetRaw:  rightTargetRaw,
 		LeftCurrentRaw:  leftCurRaw,
 		RightCurrentRaw: rightCurRaw,
 		LeftCurrent:     leftCur,

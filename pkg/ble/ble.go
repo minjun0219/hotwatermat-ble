@@ -620,7 +620,7 @@ func (c *Client) write(pkt []byte) error {
 
 // SetTemp는 매트의 목표 온도를 설정합니다.
 //
-// 현재 STATUS에서 현재 온도를 읽은 후, 지정된 목표 온도로 HEAT 명령을 전송합니다.
+// 최신 STATUS에서 설정 온도 원시 바이트를 읽은 후, 지정된 목표 온도로 HEAT 명령을 전송합니다.
 //
 // 매개변수:
 //   - side: 제어할 면 (protocol.SideLeft, SideRight, SideBoth)
@@ -628,12 +628,12 @@ func (c *Client) write(pkt []byte) error {
 //   - rightTemp: 오른쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
 //
 // 내부 동작:
-//  1. GetStatus로 현재 온도(원시 바이트) 획득 (3초 타임아웃)
+//  1. GetStatus로 직전 설정 온도(원시 바이트) 획득 (3초 타임아웃)
 //  2. EncodeTemp로 목표 온도를 바이트로 인코딩
 //  3. BuildHeat로 HEAT 명령 패킷 생성
 //  4. CHAR2(cmdChar)로 패킷 전송
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
-	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
+	// 최신 STATUS에서 직전 설정 온도 원시 바이트를 가져옴 (HEAT byte[7..8]에 복사)
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
 		return fmt.Errorf("get current status: %w", err)
@@ -650,7 +650,7 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	}
 
 	// HEAT 명령 패킷 생성 및 전송
-	pkt := protocol.BuildHeat(side, st.LeftCurrentRaw, st.RightCurrentRaw, leftTgt, rightTgt)
+	pkt := protocol.BuildHeat(side, st.LeftTargetRaw, st.RightTargetRaw, leftTgt, rightTgt)
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write set_temp command: %w", err)
@@ -660,11 +660,11 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 
 // PowerOn은 매트의 전원을 켭니다.
 //
-// 가능하면 현재 STATUS의 온도 데이터를 포함하여 전원 ON 명령을 보냅니다.
+// 가능하면 최신 STATUS의 설정 온도 바이트를 포함하여 전원 ON 명령을 보냅니다.
 // STATUS를 아직 받지 못한 경우(연결 직후 등)에는 온도를 0으로 설정하여 전송합니다.
 func (c *Client) PowerOn() error {
-	leftCur, rightCur := c.currentTempsRaw()
-	pkt := protocol.BuildPowerOn(leftCur, rightCur)
+	leftSet, rightSet := c.setTempsRaw()
+	pkt := protocol.BuildPowerOn(leftSet, rightSet)
 	c.debugf("POWER ON: %s", protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write power_on command: %w", err)
@@ -679,8 +679,8 @@ func (c *Client) PowerOn() error {
 //
 // PowerOn과 마찬가지로, STATUS 미수신 시 온도를 0으로 폴백합니다.
 func (c *Client) PowerOff() error {
-	leftCur, rightCur := c.currentTempsRaw()
-	pkt := protocol.BuildPowerOff(leftCur, rightCur)
+	leftSet, rightSet := c.setTempsRaw()
+	pkt := protocol.BuildPowerOff(leftSet, rightSet)
 	c.debugf("POWER OFF: %s", protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write power_off command: %w", err)
@@ -688,13 +688,13 @@ func (c *Client) PowerOff() error {
 	return nil
 }
 
-// currentTempsRaw는 전원 명령에 넣을 현재 온도 원시 바이트(왼쪽, 오른쪽)를 반환합니다.
+// setTempsRaw는 전원 명령에 넣을 설정 온도 원시 바이트(왼쪽, 오른쪽, STATUS byte[7..8])를 반환합니다.
 // 3초 안에 STATUS를 받지 못하면(연결 직후 등) 0, 0을 반환합니다. 전원 명령은 0이어도 동작합니다.
-func (c *Client) currentTempsRaw() (left, right byte) {
+func (c *Client) setTempsRaw() (left, right byte) {
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
 		c.debugf("No STATUS yet, sending power command with zero temperatures")
 		return 0, 0
 	}
-	return st.LeftCurrentRaw, st.RightCurrentRaw
+	return st.LeftTargetRaw, st.RightTargetRaw
 }

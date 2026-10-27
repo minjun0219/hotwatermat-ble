@@ -215,6 +215,21 @@ B2 00 01 06 02 04 28 25 1C 23 26 1C FE FE FE 00 C0 13 05 AD   after left → sta
 - A side in standby keeps reporting its current temp in `byte[7..8]` (it follows the water as it cools)
 - `byte[6]` changed (`30` → `AA` → `29`) without a matching user action; meaning unknown
 
+### Leaving standby (open, issue #69)
+
+How to bring a side back from standby is not settled. HEAT attempts so far (bytes counted from 0, checksums valid):
+
+| Case | Before (STATUS) | Sent (HEAT) | After (STATUS) | Result |
+|---|---|---|---|---|
+| A: left standby, `temp --left 38.5` (left set 38.0 → 38.5) | `B2 00 01 06 02 04 A6 A4 1C 23 26 1C … AA` | `[3]=02 [5]=02 [10]=A6 [11]=1C` | `B2 00 01 02 02 04 A5 A4 1C 23 26 1C … A5` | stays standby |
+| B: right standby, `temp --left 38.5 --right 28` (values unchanged) | `B2 00 01 02 02 03 AF A5 1C 23 A6 1C … 2F` | `B2 80 01 06 00 02 25 A5 1C 23 A6 1C FE FE FE FE FE FE FE 46` | `B2 00 01 06 02 03 AF A5 1C 23 A6 1C … 33` | stays standby |
+| C: right standby, `temp --right 28.5` (right set 28.0 → 28.5) | `B2 00 01 06 02 03 2E A5 1C 23 A6 1C … B2` | `B2 80 01 04 00 02 25 A5 1C 23 A6 9C FE FE FE FE FE FE FE C4` | `B2 00 01 06 02 02 2E A5 1C 23 A6 9C … 31` | runs again (`[5]` 03 → 02) |
+
+- C is the only case that woke a side: the command targeted only the standby side (`[3]=04`) and changed its set value
+- A did both of those for the left side and did not wake it, so neither rule alone explains all three cases
+- The CLI reports success in A and B even though nothing changed
+- STATUS `[3]` changed in A (`06` → `02`) and B (`02` → `06`) but not in C; meaning unknown
+
 ## Implementation Notes
 
 1. **CHAR2 for all writes** — handshake AND commands both go to CHAR2

@@ -21,8 +21,8 @@ Bluetooth permission denied or adapter unavailable.
 Please allow Bluetooth access for your terminal app:
   System Settings → Privacy & Security → Bluetooth → Allow your terminal
 
-If hotwatermat-ble runs under launchd, allow "hotwatermat-ble" there instead
-(once more after each update). A launchd job running as root cannot get it.
+If hotwatermat-ble runs under launchd, allow "hotwatermat-ble" there instead.
+A launchd job running as root cannot get it.
 
 To open System Settings directly, run:
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"`, ErrAdapterUnavailable, err)

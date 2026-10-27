@@ -65,7 +65,7 @@ BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:
 launchd가 CLI를 직접 띄우거나, 다른 데몬이 권한 책임을 떼어(disclaim) 자식으로 띄우면 권한은 터미널이 아니라 `hotwatermat-ble` 바이너리 자신에게 붙습니다. 릴리즈 바이너리에는 이를 위한 Info.plist가 들어 있습니다.
 
 - 처음 실행할 때 허락 팝업이 뜹니다. 로그인한 화면에서 **허용**을 선택하세요.
-- 릴리즈 바이너리는 ad-hoc 서명이라, 업데이트한 뒤에는 한 번 다시 허용해야 합니다.
+- 릴리즈 바이너리는 매번 같은 인증서로 서명하므로, 한 번 허용하면 업데이트한 뒤에도 유지됩니다. 이 인증서는 프로젝트에서 직접 만든 자체 서명 인증서라 Gatekeeper의 개발자 확인과는 관계없습니다(1번 설정은 그대로 필요합니다).
 - root로 도는 launchd 잡은 macOS가 허락을 물을 수 없어 Bluetooth를 쓸 수 없습니다. `UserName`을 지정해 사용자 계정으로 실행하세요.
 
 ### 소스 빌드
@@ -83,6 +83,8 @@ go build -ldflags "-linkmode external -extldflags '-sectcreate __TEXT __info_pli
   -o hotwatermat-ble ./cmd/hotwatermat-ble/
 codesign --force --sign - --identifier io.github.minjun0219.hotwatermat-ble hotwatermat-ble
 ```
+
+`--sign -`(ad-hoc)으로 서명하면 빌드할 때마다 허락을 한 번 다시 받아야 합니다. 키체인에 코드 서명용 인증서가 있으면 `-` 대신 그 인증서를 넣으세요. 같은 인증서로 서명하는 동안은 다시 빌드해도 허락이 유지됩니다.
 
 ## 초기 설정 (setup)
 

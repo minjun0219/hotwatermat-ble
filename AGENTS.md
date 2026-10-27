@@ -60,7 +60,7 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 - `test.yml`: gofmt check, `go vet ./...` + `go build ./...` (Linux, cgo off), `go test` on the protocol package, and validates `context7.json` against the Context7 schema
 - `claude-code-review.yml`: Claude Code auto-review on every PR
 - `claude.yml`: Runs Claude Code when an owner/member/collaborator mentions `@claude` in an issue or PR
-- `release.yml`: Binary release on tag push (darwin amd64/arm64, linux amd64/arm64). Darwin binaries embed `cmd/hotwatermat-ble/Info.plist` (`-sectcreate __TEXT __info_plist`) and are ad-hoc signed with its `CFBundleIdentifier`, so a binary launched by launchd gets Bluetooth permission in its own name. Keep the plist and the signing identifier in sync.
+- `release.yml`: Binary release on tag push (darwin amd64/arm64, linux amd64/arm64). Darwin binaries embed `cmd/hotwatermat-ble/Info.plist` (`-sectcreate __TEXT __info_plist`) and are signed under its `CFBundleIdentifier` with the maintainer's self-signed certificate from the `MACOS_SIGNING_CERT_P12` and `MACOS_SIGNING_CERT_PASSWORD` secrets; the job fails without them. A binary launched by launchd gets Bluetooth permission in its own name, and macOS checks that grant against the identifier and the certificate, so it survives updates. Keep the plist and the signing identifier in sync, and do not change the identifier or the certificate lightly: either change makes every launchd user approve again.
 
 ## Trademark Policy
 

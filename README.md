@@ -113,6 +113,34 @@ hotwatermat-ble on
 hotwatermat-ble off
 ```
 
+### JSON 출력
+
+다른 프로그램이 CLI를 실행해 결과를 읽을 때는 `--json`을 붙입니다. `scan`, `status`, `temp`, `on`, `off`에서 쓸 수 있고,
+stdout에는 JSON 객체 하나만 출력됩니다. 진행 안내는 그대로 stderr로 나갑니다.
+
+```bash
+hotwatermat-ble status --json
+# {"power":"on","mode":"HEAT","side":"both","water":"OK","left":{"current":31.5,"target":35},"right":{"current":30,"target":35}}
+
+hotwatermat-ble temp --left 35 --right 35 --verify --json
+# {"sent":"temp","left":35,"right":35,"status":{"power":"on", ...}}
+```
+
+실패하면 종료 코드는 1이고, stdout에 `{"code":"…","error":"…"}`가 출력됩니다. `code`로 실패 원인을 구분할 수 있습니다.
+
+| code | 의미 |
+|------|------|
+| `device_not_found` | 매트가 보이지 않음 (공식 앱 연결 중, 범위 밖 등). 잠시 뒤 다시 시도 |
+| `error` | 그 밖의 BLE 실패 (연결 끊김, 쓰기 실패, 상태 수신 실패 등) |
+| `verify_failed` | 명령은 보냈지만 `--verify`의 상태 확인에 실패 |
+| `bluetooth_unavailable` | 블루투스가 꺼져 있거나 권한이 없음 |
+| `auth_failed` | DeviceGid가 이 매트와 맞지 않음 |
+| `not_configured` | DeviceGid가 없거나, 매트가 여러 대인데 `--address`가 없음 |
+| `invalid_argument` | 플래그나 값이 잘못됨 (온도 범위 등) |
+
+매트는 연결을 하나만 받고 연결 중에는 광고를 멈추므로, 다른 기기가 연결해 있는 경우와 범위 밖인 경우는 구분되지 않고 둘 다
+`device_not_found`로 나옵니다.
+
 ### 설정 우선순위
 
 기기 주소와 인증 키는 아래 우선순위로 결정됩니다:
@@ -144,6 +172,9 @@ hotwatermat-ble --debug status
 
 `setup`은 대화형 명령이어서 스킬은 에이전트가 직접 실행하지 말고 사용자에게 요청하도록 안내합니다. 처음 한 번은 터미널에서
 직접 `hotwatermat-ble setup`을 실행해 주세요.
+
+에이전트나 다른 프로그램이 결과를 읽을 때는 [JSON 출력](#json-출력)(`--json`)을 쓰면 됩니다. 실패 원인도 `code`로 구분되어,
+다시 시도할지 사용자에게 물을지 판단할 수 있습니다.
 
 [Context7](https://context7.com) 설정 파일(`context7.json`)도 있습니다. Context7에 이 저장소를 등록하면 Context7을 쓰는
 에이전트가 문서와 사용 규칙을 함께 받습니다.

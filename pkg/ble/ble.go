@@ -159,6 +159,20 @@ func Scan(timeout time.Duration, nameFilter string) ([]ScanResult, error) {
 // ErrClosed는 Disconnect로 닫힌 클라이언트가 연결하거나 명령을 쓰려 할 때 반환됩니다.
 var ErrClosed = errors.New("ble: client closed")
 
+// 아래 오류는 호출하는 쪽이 errors.Is로 실패 원인을 가를 수 있게 감싸서 반환합니다.
+// 반환되는 오류의 메시지는 이 값 뒤에 안내 문구가 붙은 형태입니다.
+var (
+	// ErrAdapterUnavailable은 BLE 어댑터를 켜지 못했을 때 반환됩니다 (블루투스 꺼짐, 권한 거부 등).
+	ErrAdapterUnavailable = errors.New("enable BLE adapter")
+
+	// ErrDeviceNotFound는 스캔으로 매트를 찾지 못했을 때 반환됩니다.
+	// 매트는 연결을 하나만 받고 연결 중에는 광고를 멈추므로, 공식 앱이 연결해 있어도 이 오류가 납니다.
+	ErrDeviceNotFound = errors.New("device not found")
+
+	// ErrAuthTimeout은 핸드셰이크 뒤 인증 응답이 오지 않을 때 반환됩니다. 대개 DeviceGid가 틀린 경우입니다.
+	ErrAuthTimeout = errors.New("authentication timeout")
+)
+
 // Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
 //
 // 사용 순서:
@@ -321,7 +335,7 @@ func (c *Client) connectBLE() error {
 			}
 		}
 	}
-	return errors.New("device not found after 3 attempts\n\nPossible causes:\n  - Official app is still connected (force close it first)\n  - Mat is powered off and not advertising (press any button on the remote)\n  - Device is out of BLE range")
+	return fmt.Errorf("%w after %d attempts\n\nPossible causes:\n  - Official app is still connected (force close it first)\n  - Mat is powered off and not advertising (press any button on the remote)\n  - Device is out of BLE range", ErrDeviceNotFound, maxRetries)
 
 deviceFound:
 
@@ -490,7 +504,7 @@ func (c *Client) Connect() (err error) {
 	case <-c.authDone:
 		c.debugf("Authentication complete")
 	case <-time.After(5 * time.Second):
-		return errors.New("authentication timeout (wrong DeviceGid?)")
+		return fmt.Errorf("%w (wrong DeviceGid?)", ErrAuthTimeout)
 	}
 
 	return nil

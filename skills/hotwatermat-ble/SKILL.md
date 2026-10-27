@@ -79,6 +79,35 @@ Right:   30.0°C → 35.0°C
   stderr; parse stdout only.
 - On failure the exit code is non-zero and stderr has an `Error: ...` line.
 
+## JSON output (`--json`)
+
+When a program reads the result, add `--json` to `scan`, `status`, `temp`, `on` or `off`. Stdout
+then holds exactly one JSON object; progress lines still go to stderr.
+
+| Command | Stdout |
+|---|---|
+| `status --json` (mat off) | `{"power":"off"}` |
+| `status --json` (mat on) | `{"power":"on","mode":"HEAT","side":"both","water":"OK","left":{"current":31.5,"target":35},"right":{"current":30,"target":35}}` |
+| `temp --left 35 --right 35 --json` | `{"sent":"temp","left":35,"right":35}` |
+| `on --json` / `off --json` | `{"sent":"on"}` / `{"sent":"off"}` |
+| `scan --json` | `{"devices":[{"address":"…","name":"KDO_HotWaterMat","rssi":-58}]}` (`[]` if none) |
+
+With `--verify`, `temp`/`on`/`off` add a `status` object shaped like `status --json`. On failure the
+exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one of:
+
+| `code` | Meaning | What to do |
+|---|---|---|
+| `device_not_found` | The mat is not advertising: the vendor app is connected, it is out of range, or it went quiet | Retry after a pause |
+| `error` | Another BLE failure (connection dropped, write failed, no status) | Retry once |
+| `verify_failed` | The command was sent, but the status could not be read back | Run `status`; do not resend blindly |
+| `bluetooth_unavailable` | Bluetooth is off or permission is denied | Ask the user |
+| `auth_failed` | The DeviceGid does not match this mat | Ask the user to re-run `setup` |
+| `not_configured` | No DeviceGid, or several mats and no `--address` | Ask the user |
+| `invalid_argument` | Bad flag or value (e.g. a temperature out of range) | Fix the call |
+
+A mat that is busy with another connection looks the same as one out of range: both are
+`device_not_found`.
+
 ## Rules for agents
 
 - Change power or temperature only when the user asked for it, and set exactly the temperature they
@@ -140,6 +169,10 @@ if !st.PoweredOff {
 }
 err = c.SetTemp(protocol.SideBoth, 35, 35) // or c.PowerOn() / c.PowerOff()
 ```
+
+To tell failures apart, use `errors.Is` with `ble.ErrDeviceNotFound` (not advertising; retry later),
+`ble.ErrAuthTimeout` (wrong DeviceGid) and `ble.ErrAdapterUnavailable` (Bluetooth off or no
+permission).
 
 If you change the protocol code, keep these invariants (they are tested in `pkg/protocol`):
 packets are always 20 bytes; the checksum is `sum(bytes[1:19]) & 0xFF` at byte 19; whole degrees

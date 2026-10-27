@@ -1,7 +1,9 @@
 package protocol
 
 import (
+	"encoding/hex"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -351,6 +353,49 @@ func TestParseStatus(t *testing.T) {
 	}
 	if st.PoweredOff {
 		t.Error("PoweredOff should be false")
+	}
+}
+
+// TestParseStatusLiveCapture는 실기기에서 받은 STATUS 패킷으로 온도 바이트 위치를 고정합니다.
+//
+// 공식 앱 화면과 대조한 결과 byte[7..8]=현재 온도, byte[10..11]=설정(목표) 온도입니다.
+// (#54에서 두 위치가 뒤바뀌었다고 의심했으나 재현되지 않음)
+func TestParseStatusLiveCapture(t *testing.T) {
+	tests := []struct {
+		name                string
+		hex                 string
+		leftCur, leftTarget float64
+		rightCur            float64
+	}{
+		// 앱: 왼쪽 현재 38.5(직전 37.5)·설정 38.5, 오른쪽 운전 대기·현재 25.0
+		{"left set 38.5", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", 37.5, 38.5, 25.0},
+		// 앱에서 왼쪽 설정을 38.0으로 바꾼 뒤
+		{"left set 38.0", "B2 00 01 06 02 03 AA A6 19 23 26 27 FE FE FE 00 C0 13 05 B7", 38.5, 38.0, 25.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt, err := hex.DecodeString(strings.ReplaceAll(tt.hex, " ", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := ParseStatus(pkt)
+			if err != nil {
+				t.Fatalf("ParseStatus error: %v", err)
+			}
+			if st.LeftCurrent != tt.leftCur {
+				t.Errorf("LeftCurrent = %.1f, want %.1f", st.LeftCurrent, tt.leftCur)
+			}
+			if st.LeftTarget != tt.leftTarget {
+				t.Errorf("LeftTarget = %.1f, want %.1f", st.LeftTarget, tt.leftTarget)
+			}
+			if st.RightCurrent != tt.rightCur {
+				t.Errorf("RightCurrent = %.1f, want %.1f", st.RightCurrent, tt.rightCur)
+			}
+			// 명령에 복사하는 원시 바이트는 byte[7..8]
+			if st.LeftCurrentRaw != pkt[7] || st.RightCurrentRaw != pkt[8] {
+				t.Errorf("CurrentRaw = 0x%02X/0x%02X, want byte[7..8]", st.LeftCurrentRaw, st.RightCurrentRaw)
+			}
+		})
 	}
 }
 

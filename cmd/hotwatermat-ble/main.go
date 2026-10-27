@@ -13,14 +13,14 @@
 //	hotwatermat-ble scan
 //
 //	# 상태 확인
-//	hotwatermat-ble status --address AA:BB:CC:DD:EE:FF --device-gid 13CE3CC53E5A
+//	hotwatermat-ble status --address AA:BB:CC:DD:EE:FF --device-gid A1B2C3D4E5F6
 //
 //	# 양쪽 매트 온도 35°C로 설정
 //	hotwatermat-ble temp --left 35 --right 35
 //
 //	# 환경변수 사용
 //	export HOTWATERMAT_ADDRESS=AA:BB:CC:DD:EE:FF
-//	export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
+//	export HOTWATERMAT_DEVICE_GID=A1B2C3D4E5F6
 //	hotwatermat-ble status
 package main
 
@@ -375,7 +375,7 @@ var setupCmd = &cobra.Command{
 		switch choice {
 		case "1":
 			// 사용자가 직접 GID 입력
-			fmt.Print("Enter DeviceGid (12-char hex, e.g. 13CE3CC53E5A): ")
+			fmt.Print("Enter DeviceGid (12-char hex, e.g. A1B2C3D4E5F6): ")
 			if !scanner.Scan() {
 				return fmt.Errorf("no input received")
 			}

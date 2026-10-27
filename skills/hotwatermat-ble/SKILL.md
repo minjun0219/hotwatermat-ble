@@ -90,8 +90,8 @@ Right:   30.0°C → 35.0°C
   seconds of scanning when no address is known). A failing connect retries for up to about 40
   seconds, so give the command a timeout of at least 60 seconds.
 - The DeviceGid is the mat's authentication key. Do not print it in full, write it into files you
-  commit, or paste it into issues and logs. `setup` itself only shows it masked (`13****5A`).
-- On macOS the address is a CoreBluetooth UUID (`FD319CFA-2E62-...`), not a MAC address, and it is
+  commit, or paste it into issues and logs. `setup` itself only shows it masked (`A1****F6`).
+- On macOS the address is a CoreBluetooth UUID (`12345678-ABCD-...`), not a MAC address, and it is
   different on every Mac. Do not reuse an address from another machine.
 
 ## Troubleshooting
@@ -103,7 +103,7 @@ Right:   30.0°C → 35.0°C
 | `authentication timeout (wrong DeviceGid?)` | The key does not match this mat (the mat drops a wrong key after about 4.5 s). Ask the user to re-run `setup`. |
 | `scan failed` / Bluetooth permission error on macOS | Allow Bluetooth for the terminal app: System Settings → Privacy & Security → Bluetooth. |
 | macOS says the binary is from an unidentified developer | `xattr -d com.apple.quarantine "$(command -v hotwatermat-ble)"` |
-| `invalid device-gid` | It must be 12 hex characters (6 bytes), e.g. `13CE3CC53E5A`. |
+| `invalid device-gid` | It must be 12 hex characters (6 bytes), e.g. `A1B2C3D4E5F6`. |
 
 ## Using the Go packages
 

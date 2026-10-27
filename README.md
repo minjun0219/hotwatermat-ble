@@ -127,8 +127,8 @@ hotwatermat-ble off
 hotwatermat-ble --address <ADDRESS> --device-gid <GID> status
 
 # 환경변수로 설정
-export HOTWATERMAT_ADDRESS=FD319CFA-2E62-116D-D348-5B9FEEE95D2F
-export HOTWATERMAT_DEVICE_GID=13CE3CC53E5A
+export HOTWATERMAT_ADDRESS=12345678-ABCD-EF01-2345-6789ABCDEF01
+export HOTWATERMAT_DEVICE_GID=A1B2C3D4E5F6
 hotwatermat-ble status
 
 # 디버그 출력

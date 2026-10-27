@@ -172,7 +172,7 @@ Mat → App (CHAR2): B2 F1 02 FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF E3
 ### DeviceGid Structure
 
 - 6 significant bytes + `FE FE` padding = 8 bytes in handshake positions [2..9]
-- Example: key `13CE3CC53E5A` → handshake bytes: `13 CE 3C C5 3E 5A FE FE`
+- Example: key `A1B2C3D4E5F6` → handshake bytes: `A1 B2 C3 D4 E5 F6 FE FE`
 
 ## Checksum Algorithm
 

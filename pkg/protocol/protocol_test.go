@@ -7,7 +7,7 @@ import (
 
 // testDeviceGid는 테스트 전용 DeviceGid입니다.
 // 실제 기기의 GID가 아니며, 테스트에서만 사용됩니다.
-var testDeviceGid = [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
+var testDeviceGid = [6]byte{0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6}
 
 // TestEncodeTemp는 온도→바이트 인코딩을 테스트합니다.
 //
@@ -447,10 +447,10 @@ func TestParseAuthResponse(t *testing.T) {
 // 시뮬레이션: 페어링 응답 (authType = 0x01)
 // byte[3..8]에 DeviceGid 6바이트가 포함되어 있어야 합니다.
 func TestParseDeviceGid(t *testing.T) {
-	// 페어링 응답 패킷: authType=0x01, DeviceGid=13CE3CC53E5A
+	// 페어링 응답 패킷: authType=0x01, DeviceGid=A1B2C3D4E5F6
 	pkt := []byte{
-		0xB2, 0xF1, 0x01, 0x13, 0xCE, 0x3C, 0xC5, 0x3E,
-		0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xB2, 0xF1, 0x01, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5,
+		0xF6, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0x00,
 	}
 	pkt[19] = CalcChecksum(pkt)
@@ -467,11 +467,11 @@ func TestParseDeviceGid(t *testing.T) {
 // TestParseDeviceGidHex는 16진수 문자열에서 DeviceGid 파싱을 테스트합니다.
 //
 // 테스트 케이스:
-//   - 정상: "13CE3CC53E5A" → [6]byte{0x13, 0xCE, 0x3C, 0xC5, 0x3E, 0x5A}
+//   - 정상: "A1B2C3D4E5F6" → [6]byte{0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6}
 //   - 유효하지 않은 16진수: "ZZZZ" → 오류
 //   - 길이 오류: "AABB" (4자리 = 2바이트, 6바이트여야 함) → 오류
 func TestParseDeviceGidHex(t *testing.T) {
-	gid, err := ParseDeviceGidHex("13CE3CC53E5A")
+	gid, err := ParseDeviceGidHex("A1B2C3D4E5F6")
 	if err != nil {
 		t.Fatalf("ParseDeviceGidHex error: %v", err)
 	}
@@ -495,7 +495,7 @@ func TestParseDeviceGidHex(t *testing.T) {
 func TestFormatDeviceGid(t *testing.T) {
 	gid := testDeviceGid
 	got := FormatDeviceGid(gid)
-	want := "13CE3CC53E5A"
+	want := "A1B2C3D4E5F6"
 	if got != want {
 		t.Errorf("FormatDeviceGid = %q, want %q", got, want)
 	}
@@ -538,8 +538,8 @@ func TestParseAuthResponseChecksumMismatch(t *testing.T) {
 func TestParseDeviceGidChecksumMismatch(t *testing.T) {
 	// 페어링 응답 패킷 (authType=0x01, DeviceGid 포함) — 체크섬을 의도적으로 틀리게 설정
 	pkt := []byte{
-		0xB2, 0xF1, 0x01, 0x13, 0xCE, 0x3C, 0xC5, 0x3E,
-		0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xB2, 0xF1, 0x01, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5,
+		0xF6, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0x00,
 	}
 	pkt[19] = CalcChecksum(pkt) + 1 // 의도적으로 체크섬을 틀리게 설정

@@ -60,7 +60,7 @@ Only `pkg/protocol/` has tests. BLE package requires real hardware.
 - `test.yml`: gofmt check, `go vet ./...` + `go build ./...` (Linux, cgo off), `go test` on the protocol package, and validates `context7.json` against the Context7 schema
 - `claude-code-review.yml`: Claude Code auto-review on every PR
 - `claude.yml`: Runs Claude Code when an owner/member/collaborator mentions `@claude` in an issue or PR
-- `release.yml`: Binary release on tag push (darwin amd64/arm64, linux amd64/arm64)
+- `release.yml`: Binary release on tag push (darwin amd64/arm64, linux amd64/arm64). Darwin binaries embed `cmd/hotwatermat-ble/Info.plist` (`-sectcreate __TEXT __info_plist`) and are ad-hoc signed with its `CFBundleIdentifier`, so a binary launched by launchd gets Bluetooth permission in its own name. Keep the plist and the signing identifier in sync.
 
 ## Trademark Policy
 

@@ -60,12 +60,28 @@ BLE 통신을 위해 터미널에 Bluetooth 접근 권한이 필요합니다:
 - 첫 실행 시 macOS가 Bluetooth 권한 팝업을 표시합니다 → **허용**을 선택하세요.
 - 팝업이 나타나지 않거나 거부한 경우: 시스템 설정 → 개인정보 보호 및 보안 → Bluetooth → 터미널 앱 허용
 
+**3. 데몬으로 실행할 때:**
+
+launchd가 CLI를 직접 띄우거나, 다른 데몬이 권한 책임을 떼어(disclaim) 자식으로 띄우면 권한은 터미널이 아니라 `hotwatermat-ble` 바이너리 자신에게 붙습니다. 릴리즈 바이너리에는 이를 위한 Info.plist가 들어 있습니다.
+
+- 처음 실행할 때 허락 팝업이 뜹니다. 로그인한 화면에서 **허용**을 선택하세요.
+- 릴리즈 바이너리는 ad-hoc 서명이라, 업데이트한 뒤에는 한 번 다시 허용해야 합니다.
+- root로 도는 launchd 잡은 macOS가 허락을 물을 수 없어 Bluetooth를 쓸 수 없습니다. `UserName`을 지정해 사용자 계정으로 실행하세요.
+
 ### 소스 빌드
 
 Go 1.22+ 필요:
 
 ```bash
 go build -o hotwatermat-ble ./cmd/hotwatermat-ble/
+```
+
+macOS에서 데몬으로 띄울 바이너리는 릴리즈와 같은 방식으로 Info.plist를 넣고 서명합니다 (저장소 경로에 공백이 없어야 합니다):
+
+```bash
+go build -ldflags "-linkmode external -extldflags '-sectcreate __TEXT __info_plist $PWD/cmd/hotwatermat-ble/Info.plist'" \
+  -o hotwatermat-ble ./cmd/hotwatermat-ble/
+codesign --force --sign - --identifier io.github.minjun0219.hotwatermat-ble hotwatermat-ble
 ```
 
 ## 초기 설정 (setup)

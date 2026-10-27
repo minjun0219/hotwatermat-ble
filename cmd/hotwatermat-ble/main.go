@@ -22,6 +22,9 @@
 //	export HOTWATERMAT_ADDRESS=AA:BB:CC:DD:EE:FF
 //	export HOTWATERMAT_DEVICE_GID=A1B2C3D4E5F6
 //	hotwatermat-ble status
+//
+//	# 다른 프로그램이 읽을 JSON 출력
+//	hotwatermat-ble status --json
 package main
 
 import (
@@ -29,6 +32,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -60,6 +64,7 @@ var (
 	rightTemp  float64 // 오른쪽 목표 온도 (--right, temp 명령에서 사용)
 	resetSetup bool    // 설정 초기화 (--reset-setup)
 	verify     bool    // 명령 실행 후 상태 확인 (--verify)
+	jsonOutput bool    // 결과와 오류를 JSON으로 stdout에 출력 (--json)
 )
 
 // main은 CLI의 진입점입니다.
@@ -75,6 +80,11 @@ func main() {
 	default:
 	}
 	if err != nil {
+		// --json이면 오류도 JSON으로 stdout에 출력 (cobra의 Error: 출력은 PersistentPreRun에서 끔).
+		// --json보다 앞의 플래그에서 파싱이 실패하면 jsonOutput이 설정되지 않으므로 인자도 확인
+		if jsonOutput || slices.Contains(os.Args[1:], "--json") {
+			_ = printJSON(errorJSON{Code: errorCode(err), Error: err.Error()})
+		}
 		os.Exit(1)
 	}
 }
@@ -87,6 +97,13 @@ var rootCmd = &cobra.Command{
 	Long:  "CLI tool to control a " + protocol.BLEDeviceName + " device via Bluetooth Low Energy.",
 	// Version을 지정하면 cobra가 --version 플래그를 만들어 줍니다 (install.sh가 기존 버전 확인에 사용).
 	Version: version,
+	// --json이면 cobra가 Error:와 사용법을 출력하지 않게 함 — 오류는 main이 JSON으로 출력
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if jsonOutput {
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+		}
+	},
 }
 
 // versionCmd는 버전 정보를 출력합니다.
@@ -107,12 +124,20 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan for BLE hot water mat devices",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Printf("Scanning for devices (%s)...\n", scanTimeout)
+		// --json이면 진행 안내를 stderr로 보내 stdout에는 JSON만 남김
+		progress := os.Stdout
+		if jsonOutput {
+			progress = os.Stderr
+		}
+		fmt.Fprintf(progress, "Scanning for devices (%s)...\n", scanTimeout)
 		results, err := ble.Scan(scanTimeout, protocol.BLEDeviceName)
 		if err != nil {
 			return err
 		}
 		devices := uniqueDevices(results)
+		if jsonOutput {
+			return printJSON(newScanJSON(devices))
+		}
 		if len(devices) == 0 {
 			fmt.Println("No devices found.")
 			return nil
@@ -147,6 +172,9 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 
+		if jsonOutput {
+			return printJSON(newStatusJSON(st))
+		}
 		printStatus(st)
 		return nil
 	},
@@ -171,18 +199,18 @@ var tempCmd = &cobra.Command{
 
 		// 양쪽 모두 미지정 시 오류
 		if !leftChanged && !rightChanged {
-			return fmt.Errorf("specify --left and/or --right temperature")
+			return withCode(codeInvalidArgument, fmt.Errorf("specify --left and/or --right temperature"))
 		}
 
 		// 범위(28.0~48.0)와 0.5°C 단위를 연결 전에 검증 — 잘못된 값이면 BLE 스캔·연결을 기다리지 않고 바로 실패
 		if leftChanged {
 			if _, err := protocol.EncodeTemp(leftTemp); err != nil {
-				return fmt.Errorf("invalid --left: %w", err)
+				return withCode(codeInvalidArgument, fmt.Errorf("invalid --left: %w", err))
 			}
 		}
 		if rightChanged {
 			if _, err := protocol.EncodeTemp(rightTemp); err != nil {
-				return fmt.Errorf("invalid --right: %w", err)
+				return withCode(codeInvalidArgument, fmt.Errorf("invalid --right: %w", err))
 			}
 		}
 
@@ -220,6 +248,9 @@ var tempCmd = &cobra.Command{
 			return err
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
+		if jsonOutput {
+			return printCommandResult(client, commandJSON{Sent: "temp", Left: leftTemp, Right: rightTemp})
+		}
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
 
 		if verify {
@@ -247,6 +278,9 @@ var onCmd = &cobra.Command{
 			return err
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
+		if jsonOutput {
+			return printCommandResult(client, commandJSON{Sent: "on"})
+		}
 		fmt.Println("Power ON sent.")
 
 		if verify {
@@ -274,6 +308,9 @@ var offCmd = &cobra.Command{
 			return err
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
+		if jsonOutput {
+			return printCommandResult(client, commandJSON{Sent: "off"})
+		}
 		fmt.Println("Power OFF sent.")
 
 		if verify {
@@ -453,18 +490,27 @@ func printStatus(st *protocol.Status) {
 	fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
 }
 
-// verifyStatus는 명령 실행 후 1초 대기한 뒤 상태를 조회하여 출력합니다.
+// verifyStatus는 명령 실행 후 상태를 다시 조회하여 출력합니다.
 // --verify 플래그가 활성화된 경우에만 호출됩니다.
 func verifyStatus(client *ble.Client) error {
-	time.Sleep(1 * time.Second)
-	client.ClearStatus() // 캐시된 상태 제거 → 새 STATUS 패킷 대기
-	st, err := client.GetStatus(5 * time.Second)
+	st, err := readStatusAfterCommand(client)
 	if err != nil {
-		return fmt.Errorf("verify failed: %w", err)
+		return err
 	}
 	fmt.Println("\n[Verify]")
 	printStatus(st)
 	return nil
+}
+
+// readStatusAfterCommand는 명령 실행 후 1초 대기한 뒤 새로 받은 상태를 반환합니다.
+func readStatusAfterCommand(client *ble.Client) (*protocol.Status, error) {
+	time.Sleep(1 * time.Second)
+	client.ClearStatus() // 캐시된 상태 제거 → 새 STATUS 패킷 대기
+	st, err := client.GetStatus(5 * time.Second)
+	if err != nil {
+		return nil, withCode(codeVerifyFailed, fmt.Errorf("verify failed: %w", err))
+	}
+	return st, nil
 }
 
 // uniqueDevices는 스캔 결과에서 주소가 같은 중복을 없애고 신호가 강한 순으로 정렬합니다.
@@ -534,7 +580,7 @@ func connect() (*ble.Client, error) {
 
 		unique := uniqueDevices(results)
 		if len(unique) == 0 {
-			return nil, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName)
+			return nil, withCode(codeDeviceNotFound, fmt.Errorf("no %s device found. Make sure the mat is powered on and in range", protocol.BLEDeviceName))
 		}
 		if len(unique) == 1 {
 			// 기기가 1개만 발견되면 자동 선택
@@ -547,7 +593,7 @@ func connect() (*ble.Client, error) {
 				fmt.Fprintf(os.Stderr, "  [%d] %s (RSSI: %d)\n", i+1, r.Address, r.RSSI)
 			}
 			fmt.Fprintln(os.Stderr, "Please specify --address to select a device.")
-			return nil, fmt.Errorf("multiple devices found, specify --address")
+			return nil, withCode(codeNotConfigured, fmt.Errorf("multiple devices found, specify --address"))
 		}
 	}
 
@@ -558,26 +604,26 @@ func connect() (*ble.Client, error) {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(deviceGid)
 		if err != nil {
-			return nil, fmt.Errorf("invalid device-gid: %w", err)
+			return nil, withCode(codeInvalidArgument, fmt.Errorf("invalid device-gid: %w", err))
 		}
 	} else if envGid := os.Getenv("HOTWATERMAT_DEVICE_GID"); envGid != "" {
 		// 환경변수에서 파싱
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(envGid)
 		if err != nil {
-			return nil, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err)
+			return nil, withCode(codeInvalidArgument, fmt.Errorf("invalid HOTWATERMAT_DEVICE_GID: %w", err))
 		}
 	} else if cachedConfig != nil && cachedConfig.DeviceGid != "" {
 		var err error
 		gid, err = protocol.ParseDeviceGidHex(cachedConfig.DeviceGid)
 		if err != nil {
-			return nil, fmt.Errorf("invalid cached device_gid: %w", err)
+			return nil, withCode(codeNotConfigured, fmt.Errorf("invalid cached device_gid: %w", err))
 		}
 		if debug {
 			fmt.Fprintf(os.Stderr, "Using cached device GID: %s\n", maskDeviceGid(cachedConfig.DeviceGid))
 		}
 	} else {
-		return nil, fmt.Errorf("no device GID specified. Run 'hotwatermat-ble setup' to pair, or set HOTWATERMAT_DEVICE_GID / --device-gid")
+		return nil, withCode(codeNotConfigured, fmt.Errorf("no device GID specified. Run 'hotwatermat-ble setup' to pair, or set HOTWATERMAT_DEVICE_GID / --device-gid"))
 	}
 
 	// BLE 클라이언트 생성 및 연결 (실패하면 Connect가 연결을 해제함)
@@ -700,6 +746,16 @@ func init() {
 	onCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 	offCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
+
+	// --json: 결과를 JSON 한 줄로 stdout에 출력 (다른 프로그램이 CLI를 띄워 읽을 때)
+	for _, c := range []*cobra.Command{scanCmd, statusCmd, tempCmd, onCmd, offCmd} {
+		c.Flags().BoolVar(&jsonOutput, "json", false, "Print the result (or error) as JSON on stdout")
+	}
+
+	// 잘못된 플래그 값(--left abc 등)은 --json 오류에서 invalid_argument로 분류 (메시지는 그대로)
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return withCode(codeInvalidArgument, err)
+	})
 
 	// 루트 명령에 하위 명령 등록
 	// --version 출력을 version 하위 명령과 같은 형식으로 맞춤

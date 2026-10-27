@@ -13,12 +13,12 @@ import "fmt"
 //
 //	시스템 설정 → 개인 정보 보호 및 보안 → Bluetooth → 사용 중인 터미널 앱 허용
 func wrapBLEEnableError(err error) error {
-	return fmt.Errorf(`enable BLE adapter: %w
+	return fmt.Errorf(`%w: %w
 
 Bluetooth permission denied or adapter unavailable.
 Please allow Bluetooth access for your terminal app:
   System Settings → Privacy & Security → Bluetooth → Allow your terminal
 
 To open System Settings directly, run:
-  open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"`, err)
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"`, ErrAdapterUnavailable, err)
 }

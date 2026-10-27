@@ -11,9 +11,9 @@ import "fmt"
 //   - 필요한 권한이 있는지 (Linux에서 BlueZ는 보통 root 권한이 필요)
 //   - hci0 등 블루투스 어댑터가 장착되어 있는지 (hciconfig)
 func wrapBLEEnableError(err error) error {
-	return fmt.Errorf(`enable BLE adapter: %w
+	return fmt.Errorf(`%w: %w
 
 Bluetooth adapter unavailable. Please check:
   - Bluetooth is enabled on your system
-  - Required permissions are granted (e.g., running as root for BlueZ on Linux)`, err)
+  - Required permissions are granted (e.g., running as root for BlueZ on Linux)`, ErrAdapterUnavailable, err)
 }

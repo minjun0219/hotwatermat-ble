@@ -130,7 +130,7 @@ A mat that is busy with another connection looks the same as one out of range: b
 | `device not found after 3 attempts` | The vendor app is still connected (force-close it), the mat is out of range, or it stopped advertising (press a button on its remote). Then retry once. |
 | `multiple devices found, specify --address` | Run `hotwatermat-ble scan`, ask the user which one, pass `--address`. |
 | `authentication timeout (wrong DeviceGid?)` | The key does not match this mat (the mat drops a wrong key after about 4.5 s). Ask the user to re-run `setup`. |
-| `scan failed` / Bluetooth permission error on macOS | Allow Bluetooth for the terminal app: System Settings → Privacy & Security → Bluetooth. |
+| `scan failed` / Bluetooth permission error on macOS | Allow Bluetooth for the terminal app: System Settings → Privacy & Security → Bluetooth. If the CLI runs under launchd (or a daemon that disclaims it), the permission belongs to `hotwatermat-ble` itself: the user allows it once, again after each update, and a root launchd job cannot get it. |
 | macOS says the binary is from an unidentified developer | `xattr -d com.apple.quarantine "$(command -v hotwatermat-ble)"` |
 | `invalid device-gid` | It must be 12 hex characters (6 bytes), e.g. `A1B2C3D4E5F6`. |
 

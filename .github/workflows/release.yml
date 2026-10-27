@@ -19,13 +19,26 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Embed Info.plist and ad-hoc sign with a fixed identifier. When the CLI is its own
+      # responsible process (a launchd job, or a parent that spawns it with responsibility
+      # disclaimed), macOS asks for Bluetooth in the binary's own name and requires
+      # NSBluetoothAlwaysUsageDescription. An ad-hoc grant is tied to the cdhash, so each
+      # release asks once more. Run from a terminal, the grant belongs to the terminal app.
       - name: Build and archive darwin binaries
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          PLIST="$PWD/cmd/hotwatermat-ble/Info.plist"
+          plutil -lint "$PLIST"
+          BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")
           for arch in amd64 arm64; do
             mkdir -p staging
-            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build -ldflags="-s -w -X main.version=${VERSION}" \
+            GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build \
+              -ldflags="-s -w -X main.version=${VERSION} -linkmode external -extldflags '-sectcreate __TEXT __info_plist ${PLIST}'" \
               -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
+            codesign --force --sign - --identifier "$BUNDLE_ID" staging/hotwatermat-ble
+            sig=$(codesign -dvvv staging/hotwatermat-ble 2>&1)
+            grep -q "^Identifier=${BUNDLE_ID}$" <<<"$sig"
+            grep -q "^Info.plist entries=" <<<"$sig"
             cp README.md LICENSE staging/
             mkdir -p dist
             tar -czf "dist/hotwatermat-ble_${VERSION}_darwin_${arch}.tar.gz" -C staging .

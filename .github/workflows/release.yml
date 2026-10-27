@@ -19,31 +19,75 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Embed Info.plist and ad-hoc sign with a fixed identifier. When the CLI is its own
-      # responsible process (a launchd job, or a parent that spawns it with responsibility
-      # disclaimed), macOS asks for Bluetooth in the binary's own name and requires
-      # NSBluetoothAlwaysUsageDescription. An ad-hoc grant is tied to the cdhash, so each
-      # release asks once more. Run from a terminal, the grant belongs to the terminal app.
+      # Import the maintainer's self-signed code signing certificate into a temporary keychain.
+      # Gatekeeper does not trust it; it only gives every release the same signing identity.
+      # Without the secrets the job fails instead of falling back to ad-hoc, which would make
+      # every launchd user approve Bluetooth again.
+      - name: Import signing certificate
+        env:
+          MACOS_SIGNING_CERT_P12: ${{ secrets.MACOS_SIGNING_CERT_P12 }}
+          MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_SIGNING_CERT_P12" ] || [ -z "$MACOS_SIGNING_CERT_PASSWORD" ]; then
+            echo "::error::MACOS_SIGNING_CERT_P12 and MACOS_SIGNING_CERT_PASSWORD secrets are required to sign the darwin binaries"
+            exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+          echo "SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          base64 --decode <<<"$MACOS_SIGNING_CERT_P12" > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -f pkcs12 -P "$MACOS_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          ids=$(security find-identity -p codesigning "$KEYCHAIN" | grep -Eo '^ *[0-9]+\) [0-9A-F]{40}' | awk '{print $2}' | sort -u)
+          if [ "$(grep -c . <<<"$ids")" -ne 1 ]; then
+            echo "::error::expected one code signing identity in MACOS_SIGNING_CERT_P12, found: ${ids:-none}"
+            exit 1
+          fi
+          echo "Signing identity: $ids"
+          echo "SIGNING_IDENTITY=$ids" >> "$GITHUB_ENV"
+
+      # Embed Info.plist and sign with a fixed identifier. When the CLI is its own responsible
+      # process (a launchd job, or a parent that spawns it with responsibility disclaimed), macOS
+      # asks for Bluetooth in the binary's own name and requires NSBluetoothAlwaysUsageDescription.
+      # The grant is checked against the identifier and the certificate, so it carries over to the
+      # next release. Run from a terminal, the grant belongs to the terminal app.
       - name: Build and archive darwin binaries
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           PLIST="$PWD/cmd/hotwatermat-ble/Info.plist"
           plutil -lint "$PLIST"
           BUNDLE_ID=$(plutil -extract CFBundleIdentifier raw -o - "$PLIST")
+          LEAF=$(tr 'A-F' 'a-f' <<<"$SIGNING_IDENTITY")
           for arch in amd64 arm64; do
             mkdir -p staging
             GOOS=darwin GOARCH=$arch CGO_ENABLED=1 go build \
               -ldflags="-s -w -X main.version=${VERSION} -linkmode external -extldflags '-sectcreate __TEXT __info_plist ${PLIST}'" \
               -o "staging/hotwatermat-ble" ./cmd/hotwatermat-ble/
-            codesign --force --sign - --identifier "$BUNDLE_ID" staging/hotwatermat-ble
+            codesign --force --sign "$SIGNING_IDENTITY" --keychain "$SIGNING_KEYCHAIN" --identifier "$BUNDLE_ID" staging/hotwatermat-ble
+            codesign --verify --strict staging/hotwatermat-ble
             sig=$(codesign -dvvv staging/hotwatermat-ble 2>&1)
             grep -q "^Identifier=${BUNDLE_ID}$" <<<"$sig"
             grep -q "^Info.plist entries=" <<<"$sig"
+            req=$(codesign -d -r- staging/hotwatermat-ble 2>&1)
+            grep -qF "identifier \"${BUNDLE_ID}\"" <<<"$req"
+            grep -qE "certificate (leaf|root) = H\"${LEAF}\"" <<<"$req"
             cp README.md LICENSE staging/
             mkdir -p dist
             tar -czf "dist/hotwatermat-ble_${VERSION}_darwin_${arch}.tar.gz" -C staging .
             rm -rf staging
           done
+
+      - name: Delete signing keychain
+        if: always()
+        run: |
+          if [ -n "${SIGNING_KEYCHAIN:-}" ] && [ -f "$SIGNING_KEYCHAIN" ]; then
+            security delete-keychain "$SIGNING_KEYCHAIN"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

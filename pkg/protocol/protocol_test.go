@@ -366,11 +366,17 @@ func TestParseStatusLiveCapture(t *testing.T) {
 		hex                 string
 		leftCur, leftTarget float64
 		rightCur            float64
+		leftStandby         bool
+		rightStandby        bool
 	}{
 		// 앱: 왼쪽 현재 38.5(직전 37.5)·설정 38.5, 오른쪽 운전 대기·현재 25.0
-		{"left set 38.5", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", 37.5, 38.5, 25.0},
+		{"left set 38.5", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", 37.5, 38.5, 25.0, false, true},
 		// 앱에서 왼쪽 설정을 38.0으로 바꾼 뒤
-		{"left set 38.0", "B2 00 01 06 02 03 AA A6 19 23 26 27 FE FE FE 00 C0 13 05 B7", 38.5, 38.0, 25.0},
+		{"left set 38.0", "B2 00 01 06 02 03 AA A6 19 23 26 27 FE FE FE 00 C0 13 05 B7", 38.5, 38.0, 25.0, false, true},
+		// 앱에서 오른쪽을 '운전 대기'에서 운전(설정 28.0)으로 바꾼 뒤 — byte[5]가 03에서 02로 바뀜
+		{"right on 28.0", "B2 00 01 06 02 02 29 26 1C 23 26 1C FE FE FE 00 C0 13 05 AD", 38.0, 38.0, 28.0, false, false},
+		// 앱에서 왼쪽을 '운전 대기'로 바꾼 뒤 — byte[5]가 04, 왼쪽 설정 바이트에는 예전 값(38.0)이 남음
+		{"left standby", "B2 00 01 06 02 04 28 25 1C 23 26 1C FE FE FE 00 C0 13 05 AD", 37.0, 38.0, 28.0, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -390,6 +396,12 @@ func TestParseStatusLiveCapture(t *testing.T) {
 			}
 			if st.RightCurrent != tt.rightCur {
 				t.Errorf("RightCurrent = %.1f, want %.1f", st.RightCurrent, tt.rightCur)
+			}
+			if st.LeftStandby != tt.leftStandby {
+				t.Errorf("LeftStandby = %v, want %v", st.LeftStandby, tt.leftStandby)
+			}
+			if st.RightStandby != tt.rightStandby {
+				t.Errorf("RightStandby = %v, want %v", st.RightStandby, tt.rightStandby)
 			}
 			// 명령에 복사하는 원시 바이트는 byte[7..8]
 			if st.LeftCurrentRaw != pkt[7] || st.RightCurrentRaw != pkt[8] {

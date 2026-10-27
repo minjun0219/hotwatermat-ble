@@ -204,12 +204,16 @@ The layout above was re-checked against live STATUS packets and the official app
 ```
 B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC   app: left cur 38.5 / set 38.5, right standby cur 25.0
 B2 00 01 06 02 03 AA A6 19 23 26 27 FE FE FE 00 C0 13 05 B7   after left set → 38.0 in the app
+B2 00 01 06 02 02 29 26 1C 23 26 1C FE FE FE 00 C0 13 05 AD   after right standby → on, set 28.0 in the app
+B2 00 01 06 02 04 28 25 1C 23 26 1C FE FE FE 00 C0 13 05 AD   after left → standby in the app
 ```
 
 - `byte[10]` followed the left set change (`A6` 38.5 → `26` 38.0), so `[10..11]` = set temps
 - `byte[7]` matched the app's left current temp (38.5), and `byte[8]=0x19` (25.0, below the 28°C set range) matched the right current temp, so `[7..8]` = current temps
-- A side in standby still reports its last set temp in `byte[10..11]` (right `0x27` = 39.0 above); which byte marks standby is unknown
-- `byte[6]` changed (`30` → `AA`) without a user action; meaning unknown
+- A side in standby still reports its last set temp in `byte[10..11]` (right `0x27` = 39.0 above)
+- `byte[5]` tells which sides run (issue #67): `0x02` both, `0x03` left only (right standby), `0x04` right only (left standby). The value with both sides in standby is not yet known
+- A side in standby keeps reporting its current temp in `byte[7..8]` (it follows the water as it cools)
+- `byte[6]` changed (`30` → `AA` → `29`) without a matching user action; meaning unknown
 
 ## Implementation Notes
 

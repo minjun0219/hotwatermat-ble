@@ -486,8 +486,18 @@ func printStatus(st *protocol.Status) {
 	fmt.Printf("Mode:    %s\n", st.ModeName)
 	fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))
 	fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))
-	fmt.Printf("Left:    %.1f°C → %.1f°C\n", st.LeftCurrent, st.LeftTarget)
-	fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
+	printSide("Left:    ", st.LeftCurrent, st.LeftTarget, st.LeftStandby)
+	printSide("Right:   ", st.RightCurrent, st.RightTarget, st.RightStandby)
+}
+
+// printSide는 한쪽 매트의 온도를 "현재 → 목표" 형식으로 출력합니다.
+// 대기 중에는 목표 온도 바이트에 예전 설정값이 남아 있으므로 현재 온도만 출력합니다.
+func printSide(label string, current, target float64, standby bool) {
+	if standby {
+		fmt.Printf("%s%.1f°C (standby)\n", label, current)
+		return
+	}
+	fmt.Printf("%s%.1f°C → %.1f°C\n", label, current, target)
 }
 
 // verifyStatus는 명령 실행 후 상태를 다시 조회하여 출력합니다.

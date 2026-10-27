@@ -410,6 +410,7 @@ type Status struct {
 	WaterLevel int
 
 	// Field5는 byte[5]의 원시값입니다 (모드별로 의미가 다름).
+	// 실기기에서는 양쪽 운전 중 0x02, 오른쪽 대기 중 0x03, 왼쪽 대기 중 0x04였습니다 (LeftStandby, RightStandby 참고).
 	Field5 byte
 
 	// Field6은 byte[6]의 원시값입니다 (모드별로 의미가 다름).
@@ -441,10 +442,25 @@ type Status struct {
 	// Raw는 원본 20바이트 패킷 데이터입니다 (디버깅용).
 	Raw [PacketSize]byte
 
+	// LeftStandby는 왼쪽 매트가 '운전 대기'(설정 없음) 상태인지 여부입니다 (byte[5]가 0x04).
+	// 대기 중에도 LeftTarget에는 마지막 설정값이 남아 있으므로, 대기 여부는 이 값으로 확인해야 합니다.
+	LeftStandby bool
+
+	// RightStandby는 오른쪽 매트가 '운전 대기'(설정 없음) 상태인지 여부입니다 (byte[5]가 0x03).
+	// 대기 중에도 RightTarget에는 마지막 설정값이 남아 있으므로, 대기 여부는 이 값으로 확인해야 합니다.
+	RightStandby bool
+
 	// PoweredOff는 매트의 전원이 꺼져 있는지 여부입니다.
 	// Mode가 POWER이고 목표 온도가 양쪽 모두 0이면 전원이 꺼진 것으로 판단합니다.
 	PoweredOff bool
 }
+
+// STATUS byte[5]는 어느 쪽이 운전 중인지를 나타냅니다 (#67, 실기기 확인).
+// 0x02는 양쪽 운전이고, 한쪽이 '운전 대기'면 아래 값이 됩니다. 양쪽 모두 대기인 값은 아직 확인되지 않았습니다.
+const (
+	rightStandbyField5 = 0x03 // 왼쪽만 운전, 오른쪽 대기
+	leftStandbyField5  = 0x04 // 오른쪽만 운전, 왼쪽 대기
+)
 
 // ParseStatus는 매트에서 수신한 20바이트 상태 알림 패킷을 파싱합니다.
 //
@@ -517,6 +533,8 @@ func ParseStatus(data []byte) (*Status, error) {
 		RightTarget:     rightTarget,
 		SubCmd:          data[12],
 		Raw:             raw,
+		LeftStandby:     !poweredOff && data[5] == leftStandbyField5,
+		RightStandby:    !poweredOff && data[5] == rightStandbyField5,
 		PoweredOff:      poweredOff,
 	}, nil
 }

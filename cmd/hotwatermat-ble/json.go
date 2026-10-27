@@ -69,9 +69,11 @@ type statusJSON struct {
 }
 
 // sideJSON은 한쪽 매트의 현재 온도와 목표 온도(°C)입니다.
+// '운전 대기' 중이면 standby가 true이고, target은 매트에 남아 있는 마지막 설정값입니다.
 type sideJSON struct {
 	Current float64 `json:"current"`
 	Target  float64 `json:"target"`
+	Standby bool    `json:"standby,omitempty"`
 }
 
 // commandJSON은 temp, on, off 명령의 --json 출력입니다.
@@ -104,8 +106,8 @@ func newStatusJSON(st *protocol.Status) *statusJSON {
 		Mode:  st.ModeName,
 		Side:  protocol.SideName(st.Side),
 		Water: protocol.WaterLevelName(st.WaterLevel),
-		Left:  &sideJSON{Current: st.LeftCurrent, Target: st.LeftTarget},
-		Right: &sideJSON{Current: st.RightCurrent, Target: st.RightTarget},
+		Left:  &sideJSON{Current: st.LeftCurrent, Target: st.LeftTarget, Standby: st.LeftStandby},
+		Right: &sideJSON{Current: st.RightCurrent, Target: st.RightTarget, Standby: st.RightStandby},
 	}
 }
 

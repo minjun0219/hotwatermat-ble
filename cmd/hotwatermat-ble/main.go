@@ -487,7 +487,12 @@ func printStatus(st *protocol.Status) {
 	fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))
 	fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))
 	fmt.Printf("Left:    %.1f°C → %.1f°C\n", st.LeftCurrent, st.LeftTarget)
-	fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
+	if st.RightStandby {
+		// 대기 중에는 목표 온도 바이트에 예전 설정값이 남아 있으므로 표시하지 않음
+		fmt.Printf("Right:   %.1f°C (standby)\n", st.RightCurrent)
+	} else {
+		fmt.Printf("Right:   %.1f°C → %.1f°C\n", st.RightCurrent, st.RightTarget)
+	}
 }
 
 // verifyStatus는 명령 실행 후 상태를 다시 조회하여 출력합니다.

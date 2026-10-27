@@ -72,7 +72,9 @@ Left:    31.5°C → 35.0°C
 Right:   30.0°C → 35.0°C
 ```
 
-- `Left` / `Right` are `current → target`.
+- `Left` / `Right` are `current → target`. A side in standby (switched on in the app but not
+  running) prints only its current temperature, e.g. `Right:   25.0°C (standby)`. Detection covers
+  the right side only for now.
 - `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
 - Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to
@@ -92,7 +94,8 @@ then holds exactly one JSON object; progress lines still go to stderr.
 | `on --json` / `off --json` | `{"sent":"on"}` / `{"sent":"off"}` |
 | `scan --json` | `{"devices":[{"address":"…","name":"KDO_HotWaterMat","rssi":-58}]}` (`[]` if none) |
 
-With `--verify`, `temp`/`on`/`off` add a `status` object shaped like `status --json`. On failure the
+A side in standby gets `"standby":true`; its `target` is the last set value the mat still keeps,
+not a running target. With `--verify`, `temp`/`on`/`off` add a `status` object shaped like `status --json`. On failure the
 exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one of:
 
 | `code` | Meaning | What to do |

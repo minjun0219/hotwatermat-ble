@@ -411,6 +411,56 @@ func TestParseStatusLiveCapture(t *testing.T) {
 	}
 }
 
+// TestHeatCurrents는 대기인 쪽을 깨우는 HEAT의 현재 온도 칸을 실기기 패킷으로 테스트합니다 (이슈 #69).
+func TestHeatCurrents(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		side      byte
+		wantLeft  byte
+		wantRight byte
+	}{
+		// 왼쪽 대기(현재 36.5). 이대로 복사한 HEAT는 무시됐고, 왼쪽 칸을 28.0으로 바꾸자 깨어남
+		{"left standby, left", "B2 00 01 02 02 04 29 A4 1C 23 A6 1C FE FE FE 00 C2 13 05 AB", SideLeft, 0x1C, 0x1C},
+		// 대기가 아닌 오른쪽만 고르면 그대로 복사
+		{"left standby, right", "B2 00 01 02 02 04 29 A4 1C 23 A6 1C FE FE FE 00 C2 13 05 AB", SideRight, 0xA4, 0x1C},
+		{"left standby, both", "B2 00 01 02 02 04 29 A4 1C 23 A6 1C FE FE FE 00 C2 13 05 AB", SideBoth, 0x1C, 0x1C},
+		// 오른쪽 대기(현재 25.0)
+		{"right standby, right", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", SideRight, 0xA5, 0x1C},
+		{"right standby, left", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", SideLeft, 0xA5, 0x19},
+		// 양쪽 운전 중이면 바꾸지 않음
+		{"both running", "B2 00 01 06 02 02 29 A5 1C 23 26 1C FE FE FE 00 C0 13 05 2C", SideBoth, 0xA5, 0x1C},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt, err := hex.DecodeString(strings.ReplaceAll(tt.status, " ", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := ParseStatus(pkt)
+			if err != nil {
+				t.Fatalf("ParseStatus error: %v", err)
+			}
+			left, right := HeatCurrents(st, tt.side)
+			if left != tt.wantLeft || right != tt.wantRight {
+				t.Errorf("HeatCurrents = 0x%02X/0x%02X, want 0x%02X/0x%02X", left, right, tt.wantLeft, tt.wantRight)
+			}
+		})
+	}
+
+	// 왼쪽 대기를 깨운 실기기 HEAT 패킷과 같은 바이트가 나와야 함
+	pkt, _ := hex.DecodeString(strings.ReplaceAll("B2 00 01 02 02 04 29 A4 1C 23 A6 1C FE FE FE 00 C2 13 05 AB", " ", ""))
+	st, err := ParseStatus(pkt)
+	if err != nil {
+		t.Fatalf("ParseStatus error: %v", err)
+	}
+	left, right := HeatCurrents(st, SideLeft)
+	heat := BuildHeat(SideLeft, left, right, 0x1C, 0x1C)
+	if got, want := FormatPacket(heat[:]), "B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F"; got != want {
+		t.Errorf("HEAT = %s, want %s", got, want)
+	}
+}
+
 // TestParseStatusPowerOff는 전원 꺼짐 상태의 STATUS 패킷 파싱을 테스트합니다.
 //
 // Mode가 POWER(0x06)이고 목표 온도(byte[10], byte[11])가 모두 0이면

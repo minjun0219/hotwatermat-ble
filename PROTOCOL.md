@@ -215,9 +215,17 @@ B2 00 01 06 02 04 28 25 1C 23 26 1C FE FE FE 00 C0 13 05 AD   after left → sta
 - A side in standby keeps reporting its current temp in `byte[7..8]` (it follows the water as it cools)
 - `byte[6]` changed (`30` → `AA` → `29`) without a matching user action; meaning unknown
 
-### Leaving standby (open, issue #69)
+### Leaving standby (issue #69)
 
-How to bring a side back from standby is not settled. HEAT attempts so far (bytes counted from 0, checksums valid):
+**Rule (confirmed 2026-10-28):** a HEAT command wakes a standby side when that side's "current" byte (`[7]` left, `[8]` right) is `1C` (28.0). The mat ignores the HEAT while that byte holds the side's real water temperature above 28. Confirmed packet, left standby with left water at 32.0:
+
+```
+B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F   → STATUS [5] 04 → 02
+```
+
+Every earlier wake fits this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`. The CLI's `SetTemp` now puts `1C` in the current byte of a standby side it targets (`protocol.HeatCurrents`). Whether values below 28 also wake a side, and whether targets other than 28.0/28.5 apply on the same command, is untested. The command that puts a side into standby is still unknown.
+
+Earlier HEAT attempts (bytes counted from 0, checksums valid):
 
 | Case | Before (STATUS) | Sent (HEAT) | After (STATUS) | Result |
 |---|---|---|---|---|
@@ -236,7 +244,7 @@ Later checks (2026-10-28, STATUS `[5]` read with `--debug`):
 
 - A left standby side ignored every HEAT we sent: `[3]=02` with 28.0, 38.5 and 39.0
 - A right standby side woke on `[3]=04` with 28.0 and 28.5
-- The app woke the left side and left `[10]=1C` (28.0) and `[3]=02`, so its packet likely differs from ours in a byte we send fixed (`[4]=00`, `[5]=02`, `[6]=25`) or copy from STATUS (`[7]`, `[8]`). Unconfirmed; an HCI capture of the app waking the left side is the next step
+- The app woke the left side and left `[10]=1C` (28.0) and `[3]=02`. The difference from our packets turned out to be `[7]` (see the rule above)
 - `[3]=06` with unchanged values did not wake the right side (B)
 - While a side is running, `[3]=02` HEAT applies normally (left 28.5 and 38.5 both took)
 - The app shows standby as the slider stop below 28.0, so entering standby may be a target below the CLI's floor. No packet for it has been seen

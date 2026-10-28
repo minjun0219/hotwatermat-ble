@@ -629,9 +629,10 @@ func (c *Client) write(pkt []byte) error {
 //
 // 내부 동작:
 //  1. GetStatus로 현재 온도(원시 바이트) 획득 (3초 타임아웃)
-//  2. EncodeTemp로 목표 온도를 바이트로 인코딩
-//  3. BuildHeat로 HEAT 명령 패킷 생성
-//  4. CHAR2(cmdChar)로 패킷 전송
+//  2. HeatCurrents로 현재 온도 칸 결정 (대기인 쪽은 28.0으로 바꿔 깨움)
+//  3. EncodeTemp로 목표 온도를 바이트로 인코딩
+//  4. BuildHeat로 HEAT 명령 패킷 생성
+//  5. CHAR2(cmdChar)로 패킷 전송
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
 	st, err := c.GetStatus(3 * time.Second)
@@ -649,8 +650,9 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		return fmt.Errorf("encode right temp: %w", err)
 	}
 
-	// HEAT 명령 패킷 생성 및 전송
-	pkt := protocol.BuildHeat(side, st.LeftCurrentRaw, st.RightCurrentRaw, leftTgt, rightTgt)
+	// HEAT 명령 패킷 생성 및 전송. 대기인 쪽은 HeatCurrents가 현재 온도 칸을 바꿔 깨웁니다.
+	leftCur, rightCur := protocol.HeatCurrents(st, side)
+	pkt := protocol.BuildHeat(side, leftCur, rightCur, leftTgt, rightTgt)
 	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write set_temp command: %w", err)

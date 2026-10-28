@@ -225,10 +225,20 @@ How to bring a side back from standby is not settled. HEAT attempts so far (byte
 | B: right standby, `temp --left 38.5 --right 28` (values unchanged) | `B2 00 01 02 02 03 AF A5 1C 23 A6 1C … 2F` | `B2 80 01 06 00 02 25 A5 1C 23 A6 1C FE FE FE FE FE FE FE 46` | `B2 00 01 06 02 03 AF A5 1C 23 A6 1C … 33` | stays standby |
 | C: right standby, `temp --right 28.5` (right set 28.0 → 28.5) | `B2 00 01 06 02 03 2E A5 1C 23 A6 1C … B2` | `B2 80 01 04 00 02 25 A5 1C 23 A6 9C FE FE FE FE FE FE FE C4` | `B2 00 01 06 02 02 2E A5 1C 23 A6 9C … 31` | runs again (`[5]` 03 → 02) |
 
-- C is the only case that woke a side: the command targeted only the standby side (`[3]=04`) and changed its set value
-- A did both of those for the left side and did not wake it, so neither rule alone explains all three cases
-- The CLI reports success in A and B even though nothing changed
-- STATUS `[3]` changed in A (`06` → `02`) and B (`02` → `06`) but not in C; meaning unknown
+Later checks (2026-10-28, STATUS `[5]` read with `--debug`):
+
+| Case | Sent (HEAT) | Result |
+|---|---|---|
+| 1, 2: left standby, `temp --left` 38.5 and 39.0, also right after a both-sides command | `[3]=02`, left set raised | stays standby |
+| 3: right standby, `temp --right 28` (value unchanged at 28.0) | `[3]=04 [11]=1C` | runs again (`[5]` 03 → 02) |
+| 5: the official app wakes the left side | STATUS after it: `[3]=02 [10]=1C` (28.0) | runs again |
+
+- The side byte alone does not wake a side: `[3]=02` with 38.5 or 39.0 left the left side in standby, but the app woke it with `[3]=02` and 28.0
+- Every wake so far set the standby side to 28.0 or 28.5, the lowest values the CLI allows. Working guess: a standby side ignores higher targets and wakes on the floor value. Not yet tried: `temp --left 28` on a left standby side
+- `[3]=06` with unchanged values did not wake the right side (B)
+- While a side is running, `[3]=02` HEAT applies normally (left 28.5 and 38.5 both took)
+- The app shows standby as the slider stop below 28.0, so entering standby may be a target below the CLI's floor. No packet for it has been seen
+- STATUS `[3]` follows `02`/`06` commands and stays `06` after `04` commands; meaning unknown
 
 ## Implementation Notes
 

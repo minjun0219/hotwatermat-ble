@@ -632,6 +632,7 @@ func (c *Client) write(pkt []byte) error {
 //  2. 고른 쪽이 '운전 대기'이고 목표가 28.0이 아니면, 먼저 그쪽을 28.0으로 깨우고 운전으로 바뀔 때까지 기다림
 //     (오른쪽은 목표가 28.0이 아니면 깨어나지 않았음, 이슈 #69. 앱도 28.0으로 깨운 뒤 온도를 올림)
 //  3. HeatCurrents·HeatRun으로 현재 온도 칸과 운전할 면을 정해 HEAT 전송
+//  4. 각 명령 뒤 반영되지 않았는데 STATUS byte[3](좌우 연동)이 바뀌었으면 한 번 더 전송 (sendHeatConfirm)
 //
 // 깨우기가 제한 시간 안에 확인되지 않아도 오류로 끝내지 않고 원래 명령을 보냅니다.
 // 반영 여부는 호출하는 쪽이 STATUS로 확인합니다 (temp --verify).
@@ -663,15 +664,49 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		if wakeRight {
 			wr = wakeTarget
 		}
-		if err := c.sendHeat("HEAT (wake)", st, side, wl, wr); err != nil {
+		awake, ok, err := c.sendHeatConfirm("HEAT (wake)", st, side, wl, wr, wakeTimeout, func(s *protocol.Status) bool {
+			return !(wakeLeft && s.LeftStandby) && !(wakeRight && s.RightStandby)
+		})
+		if err != nil {
 			return err
 		}
-		st = c.waitStatus(wakeTimeout, func(s *protocol.Status) bool {
-			return !(wakeLeft && s.LeftStandby) && !(wakeRight && s.RightStandby)
-		}, st)
+		if !ok {
+			c.debugf("Side still in standby after wake command")
+		}
+		if awake != nil {
+			st = awake
+		}
 	}
 
-	return c.sendHeat("HEAT", st, side, leftTgt, rightTgt)
+	_, _, err = c.sendHeatConfirm("HEAT", st, side, leftTgt, rightTgt, applyTimeout, func(s *protocol.Status) bool {
+		leftOK := side&protocol.SideLeft == 0 || (!s.LeftStandby && s.LeftTarget == leftTemp)
+		rightOK := side&protocol.SideRight == 0 || (!s.RightStandby && s.RightTarget == rightTemp)
+		return leftOK && rightOK
+	})
+	return err
+}
+
+// sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
+//
+// 좌우 연동(STATUS byte[3]=0x06)에서 한쪽만 고른 명령을 보내면, 매트는 첫 명령으로 byte[3]만 바꾸고
+// 나머지는 버릴 때가 있습니다(실기기 확인). 그래서 ok를 만족하지 않았는데 byte[3]이 바뀌었으면 한 번 더 보냅니다.
+// 반환값은 마지막으로 받은 STATUS(없으면 nil)와 ok 만족 여부입니다.
+func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTgt, rightTgt byte, timeout time.Duration, ok func(*protocol.Status) bool) (*protocol.Status, bool, error) {
+	if err := c.sendHeat(label, st, side, leftTgt, rightTgt); err != nil {
+		return nil, false, err
+	}
+	after, done := c.waitStatus(timeout, ok)
+	if done || after == nil || after.Side == st.Side {
+		return after, done, nil
+	}
+	if err := c.sendHeat(label+" (retry)", after, side, leftTgt, rightTgt); err != nil {
+		return after, false, err
+	}
+	again, done := c.waitStatus(timeout, ok)
+	if again == nil {
+		again = after
+	}
+	return again, done, nil
 }
 
 // wakeTarget은 대기인 쪽을 깨울 때 보내는 목표 온도입니다 (28.0°C).
@@ -679,6 +714,9 @@ const wakeTarget byte = 0x1C
 
 // wakeTimeout은 깨우기 명령 뒤 STATUS에서 운전으로 바뀌기를 기다리는 최대 시간입니다.
 const wakeTimeout = 5 * time.Second
+
+// applyTimeout은 HEAT 명령 뒤 목표 온도가 STATUS에 반영되기를 기다리는 최대 시간입니다.
+const applyTimeout = 3 * time.Second
 
 // sendHeat는 st를 기준으로 현재 온도 칸과 운전할 면을 정해 HEAT 명령을 보냅니다.
 func (c *Client) sendHeat(label string, st *protocol.Status, side, leftTgt, rightTgt byte) error {
@@ -692,9 +730,9 @@ func (c *Client) sendHeat(label string, st *protocol.Status, side, leftTgt, righ
 }
 
 // waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
-// 만족하는 STATUS를 받지 못하면 마지막으로 받은 STATUS(없으면 fallback)를 반환합니다.
-func (c *Client) waitStatus(timeout time.Duration, ok func(*protocol.Status) bool, fallback *protocol.Status) *protocol.Status {
-	last := fallback
+// 만족하는 STATUS를 받으면 (그 STATUS, true), 아니면 (마지막으로 받은 STATUS 또는 nil, false)를 반환합니다.
+func (c *Client) waitStatus(timeout time.Duration, ok func(*protocol.Status) bool) (*protocol.Status, bool) {
+	var last *protocol.Status
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		c.ClearStatus()
@@ -704,11 +742,10 @@ func (c *Client) waitStatus(timeout time.Duration, ok func(*protocol.Status) boo
 		}
 		last = st
 		if ok(st) {
-			return st
+			return st, true
 		}
 	}
-	c.debugf("Side still in standby after wake command")
-	return last
+	return last, false
 }
 
 // PowerOn은 매트의 전원을 켭니다.

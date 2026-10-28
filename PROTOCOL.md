@@ -241,6 +241,8 @@ B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F   → STATUS [5] 04 
 - Earlier wakes fit this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`.
 - Unknown: whether values below 28 in `[7]`/`[8]` also wake a side.
 
+**Side link (STATUS `[3]`, observed 2026-10-28):** with STATUS `[3]=06`, the first left-only HEAT (`[3]=02`) only switches STATUS `[3]` to `02` and drops the new target; the same command sent again applies. Seen with `temp --left 38.5` (`[10]` stayed `26`, then `A6` on the retry). A right-only command (`[3]=04`) from `06` applied at once. Some of the failed wakes below may include this effect. `ble.Client.SetTemp` resends a HEAT once when STATUS `[3]` changed but the command did not apply.
+
 Earlier HEAT attempts (bytes counted from 0, checksums valid):
 
 | Case | Before (STATUS) | Sent (HEAT) | After (STATUS) | Result |
@@ -264,7 +266,7 @@ Later checks (2026-10-28, STATUS `[5]` read with `--debug`):
 - `[3]=06` with unchanged values did not wake the right side (B)
 - While a side is running, `[3]=02` HEAT applies normally (left 28.5 and 38.5 both took)
 - The app shows standby as the slider stop below 28.0, so entering standby may be a target below the CLI's floor. No packet for it has been seen
-- STATUS `[3]` follows `02`/`06` commands and stays `06` after `04` commands; meaning unknown
+- STATUS `[3]` follows `02`/`06` commands and stays `06` after `04` commands. It looks like the app's "same temperature on both sides" link (`06` linked, `02` left on its own); see below
 
 ## Implementation Notes
 

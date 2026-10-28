@@ -37,10 +37,10 @@ Byte  Field          Description
 [2]   Mode           Operating mode
 [3]   Side           Target side (bitmask)
 [4]   Vol/Water      (volume << 4) | water_level
-[5]   Field5         0x02=HEAT, 0xFE=POWER commands
+[5]   Run/Field5     HEAT: sides to run (0x02 both, 0x03 right standby, 0x04 left standby); 0xFE=POWER commands
 [6]   Field6         0x25=HEAT, 0x2B=POWER ON, 0xAB=POWER OFF
-[7]   LeftCurrent    Left current confirmed temp (copy from STATUS)
-[8]   RightCurrent   Right current confirmed temp (copy from STATUS)
+[7]   LeftCurrent    Left current temp (copy from STATUS; 0x1C to wake a standby side, see Standby)
+[8]   RightCurrent   Right current temp (copy from STATUS; 0x1C to wake a standby side)
 [9]   Field9         0x23=HEAT, 0xFE=POWER
 [10]  LeftTarget     Left new target temperature
 [11]  RightTarget    Right new target temperature
@@ -211,19 +211,35 @@ B2 00 01 06 02 04 28 25 1C 23 26 1C FE FE FE 00 C0 13 05 AD   after left → sta
 - `byte[10]` followed the left set change (`A6` 38.5 → `26` 38.0), so `[10..11]` = set temps
 - `byte[7]` matched the app's left current temp (38.5), and `byte[8]=0x19` (25.0, below the 28°C set range) matched the right current temp, so `[7..8]` = current temps
 - A side in standby still reports its last set temp in `byte[10..11]` (right `0x27` = 39.0 above)
-- `byte[5]` tells which sides run (issue #67): `0x02` both, `0x03` left only (right standby), `0x04` right only (left standby). The value with both sides in standby is not yet known
+- `byte[5]` tells which sides run (issue #67; HEAT `[5]` uses the same values, see Standby): `0x02` both, `0x03` left only (right standby), `0x04` right only (left standby). The value with both sides in standby is not yet known
 - A side in standby keeps reporting its current temp in `byte[7..8]` (it follows the water as it cools)
 - `byte[6]` changed (`30` → `AA` → `29`) without a matching user action; meaning unknown
 
-### Leaving standby (issue #69)
+### Standby (issue #69)
 
-**Rule (confirmed 2026-10-28):** a HEAT command wakes a standby side when that side's "current" byte (`[7]` left, `[8]` right) is `1C` (28.0). The mat ignores the HEAT while that byte holds the side's real water temperature above 28. Confirmed packet, left standby with left water at 32.0:
+HEAT `[5]` is not a fixed value. It has the same meaning as STATUS `[5]`: the sides that should run (`0x02` both, `0x03` right standby, `0x04` left standby). Confirmed on the mat 2026-10-28.
+
+**Entering standby:** send HEAT with `[5]=0x03` (right) or `0x04` (left).
+
+```
+B2 80 01 06 00 03 25 1C 1C 23 26 1C FE FE FE FE FE FE FE 3E   → right: STATUS [5] 02 → 03
+B2 80 01 20 00 04 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE ..   → left:  STATUS [5] 02 → 04
+```
+
+Both worked with different `[3]` values (`06`, `20`); the rule for `[3]` here is unknown.
+
+**Leaving standby:** send HEAT with `[5]=0x02` and that side's "current" byte (`[7]` left, `[8]` right) set to `1C` (28.0). With the side's real water temperature above 28 in that byte, the mat ignores the command. Confirmed packet, left standby with left water at 32.0:
 
 ```
 B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F   → STATUS [5] 04 → 02
 ```
 
-Every earlier wake fits this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`. The CLI's `SetTemp` now puts `1C` in the current byte of a standby side it targets (`protocol.HeatCurrents`). Whether values below 28 also wake a side, and whether targets other than 28.0/28.5 apply on the same command, is untested. The command that puts a side into standby is still unknown.
+- Left: `[7]=1C` with a target of 38 also woke the side and applied 38 in one command.
+- Right: `[8]=1C` with a target of 38 did not wake it; it woke only with a target of 28.0 (or 28.5 in case C). The official app also wakes a side at 28.0 and raises it afterwards.
+- So `temp` wakes a standby side at 28.0 first, waits for STATUS `[5]` to show it running, then sends the requested target (`ble.Client.SetTemp`). Waking the right side from water above 28 in two steps is not yet confirmed on the mat.
+- A side that `temp` does not target keeps its standby: the CLI sends `[5]=0x03`/`0x04` for it instead of `0x02` (`protocol.HeatRun`).
+- Earlier wakes fit this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`.
+- Unknown: whether values below 28 in `[7]`/`[8]` also wake a side.
 
 Earlier HEAT attempts (bytes counted from 0, checksums valid):
 
@@ -244,7 +260,7 @@ Later checks (2026-10-28, STATUS `[5]` read with `--debug`):
 
 - A left standby side ignored every HEAT we sent: `[3]=02` with 28.0, 38.5 and 39.0
 - A right standby side woke on `[3]=04` with 28.0 and 28.5
-- The app woke the left side and left `[10]=1C` (28.0) and `[3]=02`. The difference from our packets turned out to be `[7]` (see the rule above)
+- The app woke the left side and left `[10]=1C` (28.0) and `[3]=02`. The difference from our packets turned out to be `[7]` (see above)
 - `[3]=06` with unchanged values did not wake the right side (B)
 - While a side is running, `[3]=02` HEAT applies normally (left 28.5 and 38.5 both took)
 - The app shows standby as the slider stop below 28.0, so entering standby may be a target below the CLI's floor. No packet for it has been seen

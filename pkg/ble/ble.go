@@ -628,11 +628,13 @@ func (c *Client) write(pkt []byte) error {
 //   - rightTemp: 오른쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
 //
 // 내부 동작:
-//  1. GetStatus로 현재 온도(원시 바이트) 획득 (3초 타임아웃)
-//  2. HeatCurrents로 현재 온도 칸 결정 (대기인 쪽은 28.0으로 바꿔 깨움)
-//  3. EncodeTemp로 목표 온도를 바이트로 인코딩
-//  4. BuildHeat로 HEAT 명령 패킷 생성
-//  5. CHAR2(cmdChar)로 패킷 전송
+//  1. GetStatus로 현재 온도(원시 바이트)와 대기 여부 획득 (3초 타임아웃)
+//  2. 고른 쪽이 '운전 대기'이고 목표가 28.0이 아니면, 먼저 그쪽을 28.0으로 깨우고 운전으로 바뀔 때까지 기다림
+//     (오른쪽은 목표가 28.0이 아니면 깨어나지 않았음, 이슈 #69. 앱도 28.0으로 깨운 뒤 온도를 올림)
+//  3. HeatCurrents·HeatRun으로 현재 온도 칸과 운전할 면을 정해 HEAT 전송
+//
+// 깨우기가 제한 시간 안에 확인되지 않아도 오류로 끝내지 않고 원래 명령을 보냅니다.
+// 반영 여부는 호출하는 쪽이 STATUS로 확인합니다 (temp --verify).
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
 	st, err := c.GetStatus(3 * time.Second)
@@ -650,14 +652,63 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		return fmt.Errorf("encode right temp: %w", err)
 	}
 
-	// HEAT 명령 패킷 생성 및 전송. 대기인 쪽은 HeatCurrents가 현재 온도 칸을 바꿔 깨웁니다.
+	// 대기인 쪽을 28.0으로 먼저 깨움
+	wakeLeft := st.LeftStandby && side&protocol.SideLeft != 0 && leftTgt != wakeTarget
+	wakeRight := st.RightStandby && side&protocol.SideRight != 0 && rightTgt != wakeTarget
+	if wakeLeft || wakeRight {
+		wl, wr := leftTgt, rightTgt
+		if wakeLeft {
+			wl = wakeTarget
+		}
+		if wakeRight {
+			wr = wakeTarget
+		}
+		if err := c.sendHeat("HEAT (wake)", st, side, wl, wr); err != nil {
+			return err
+		}
+		st = c.waitStatus(wakeTimeout, func(s *protocol.Status) bool {
+			return !(wakeLeft && s.LeftStandby) && !(wakeRight && s.RightStandby)
+		}, st)
+	}
+
+	return c.sendHeat("HEAT", st, side, leftTgt, rightTgt)
+}
+
+// wakeTarget은 대기인 쪽을 깨울 때 보내는 목표 온도입니다 (28.0°C).
+const wakeTarget byte = 0x1C
+
+// wakeTimeout은 깨우기 명령 뒤 STATUS에서 운전으로 바뀌기를 기다리는 최대 시간입니다.
+const wakeTimeout = 5 * time.Second
+
+// sendHeat는 st를 기준으로 현재 온도 칸과 운전할 면을 정해 HEAT 명령을 보냅니다.
+func (c *Client) sendHeat(label string, st *protocol.Status, side, leftTgt, rightTgt byte) error {
 	leftCur, rightCur := protocol.HeatCurrents(st, side)
-	pkt := protocol.BuildHeat(side, leftCur, rightCur, leftTgt, rightTgt)
-	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
+	pkt := protocol.BuildHeatRun(side, protocol.HeatRun(st, side), leftCur, rightCur, leftTgt, rightTgt)
+	c.debugf("%s: %s", label, protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write set_temp command: %w", err)
 	}
 	return nil
+}
+
+// waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
+// 만족하는 STATUS를 받지 못하면 마지막으로 받은 STATUS(없으면 fallback)를 반환합니다.
+func (c *Client) waitStatus(timeout time.Duration, ok func(*protocol.Status) bool, fallback *protocol.Status) *protocol.Status {
+	last := fallback
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c.ClearStatus()
+		st, err := c.GetStatus(time.Until(deadline))
+		if err != nil {
+			break
+		}
+		last = st
+		if ok(st) {
+			return st
+		}
+	}
+	c.debugf("Side still in standby after wake command")
+	return last
 }
 
 // PowerOn은 매트의 전원을 켭니다.

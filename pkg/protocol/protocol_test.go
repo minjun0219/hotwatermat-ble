@@ -461,6 +461,55 @@ func TestHeatCurrents(t *testing.T) {
 	}
 }
 
+// TestHeatRun은 HEAT byte[5](운전할 면)를 실기기 STATUS로 테스트합니다 (이슈 #69).
+func TestHeatRun(t *testing.T) {
+	const (
+		leftStandby  = "B2 00 01 02 02 04 29 A4 1C 23 A6 1C FE FE FE 00 C2 13 05 AB"
+		rightStandby = "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC"
+		bothRunning  = "B2 00 01 06 02 02 29 A5 1C 23 26 1C FE FE FE 00 C0 13 05 2C"
+	)
+	tests := []struct {
+		name   string
+		status string
+		side   byte
+		want   byte
+	}{
+		{"left standby, wake left", leftStandby, SideLeft, RunBoth},
+		{"left standby, set right only", leftStandby, SideRight, RunRightOnly},
+		{"left standby, both", leftStandby, SideBoth, RunBoth},
+		{"right standby, wake right", rightStandby, SideRight, RunBoth},
+		{"right standby, set left only", rightStandby, SideLeft, RunLeftOnly},
+		{"both running", bothRunning, SideLeft, RunBoth},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt, err := hex.DecodeString(strings.ReplaceAll(tt.status, " ", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := ParseStatus(pkt)
+			if err != nil {
+				t.Fatalf("ParseStatus error: %v", err)
+			}
+			if got := HeatRun(st, tt.side); got != tt.want {
+				t.Errorf("HeatRun = 0x%02X, want 0x%02X", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBuildHeatRun은 오른쪽을 대기로 건 실기기 HEAT 패킷과 같은 바이트가 나오는지 확인합니다 (이슈 #69).
+func TestBuildHeatRun(t *testing.T) {
+	pkt := BuildHeatRun(SideBoth, RunLeftOnly, 0x1C, 0x1C, 0x26, 0x1C)
+	if got, want := FormatPacket(pkt[:]), "B2 80 01 06 00 03 25 1C 1C 23 26 1C FE FE FE FE FE FE FE 3E"; got != want {
+		t.Errorf("HEAT = %s, want %s", got, want)
+	}
+	// BuildHeat는 양쪽 운전(0x02)
+	if heat := BuildHeat(SideLeft, 0x1C, 0x1C, 0x1C, 0x1C); heat[5] != RunBoth {
+		t.Errorf("BuildHeat byte[5] = 0x%02X, want 0x%02X", heat[5], RunBoth)
+	}
+}
+
 // TestParseStatusPowerOff는 전원 꺼짐 상태의 STATUS 패킷 파싱을 테스트합니다.
 //
 // Mode가 POWER(0x06)이고 목표 온도(byte[10], byte[11])가 모두 0이면

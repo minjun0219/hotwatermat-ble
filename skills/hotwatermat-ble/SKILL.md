@@ -76,8 +76,9 @@ Right:   30.0°C → 35.0°C
 
 - `Left` / `Right` are `current → target`. A side in standby (switched on in the app but not
   running) prints only its current temperature, e.g. `Right:   25.0°C (standby)`.
-- `temp` on a side in standby also wakes it (confirmed on the mat with 28.0°C; use `--verify`
-  for other values). The CLI cannot put a side into standby; that needs the official app.
+- `temp` on a side in standby wakes it: it wakes the side at 28.0°C, then sends the requested
+  value. A standby side you did not specify stays in standby. Use `--verify` to confirm. The CLI
+  cannot put a side into standby; that needs the official app.
 - `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
 - Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to

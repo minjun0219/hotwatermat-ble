@@ -11,6 +11,7 @@
     "Run one command at a time: the mat accepts a single BLE connection, and the vendor app must be closed.",
     "setup is interactive: ask the user to run it. Otherwise set HOTWATERMAT_ADDRESS and HOTWATERMAT_DEVICE_GID, or pass --address and --device-gid.",
     "The DeviceGid is the mat's authentication key: never print it in full or commit it.",
+    "Every command that touches the mat writes an audit record to the macOS unified log (subsystem io.github.minjun0219.hotwatermat-ble); it cannot be turned off.",
     "Protocol packets are 20 bytes with checksum sum(bytes[1:19]) & 0xFF at byte 19; read STATUS on CHAR1 (0100dd), write everything to CHAR2 (0200dd)."
   ]
 }

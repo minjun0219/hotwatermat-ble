@@ -174,6 +174,7 @@ var statusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		auditAfter(st)
 
 		if jsonOutput {
 			return printJSON(newStatusJSON(st))
@@ -246,6 +247,7 @@ var tempCmd = &cobra.Command{
 		}
 
 		// 온도 설정 명령 전송
+		auditSent(map[string]any{"side": protocol.SideName(side), "left": leftTemp, "right": rightTemp})
 		err = client.SetTemp(side, leftTemp, rightTemp)
 		if err != nil {
 			return err
@@ -336,6 +338,7 @@ var onCmd = &cobra.Command{
 		}
 		defer client.Disconnect()
 
+		auditSent(map[string]any{"power": "on"})
 		if err := client.PowerOn(); err != nil {
 			return err
 		}
@@ -366,6 +369,7 @@ var offCmd = &cobra.Command{
 		}
 		defer client.Disconnect()
 
+		auditSent(map[string]any{"power": "off"})
 		if err := client.PowerOff(); err != nil {
 			return err
 		}
@@ -614,6 +618,7 @@ func readStatusAfterCommand(client *ble.Client) (*protocol.Status, error) {
 	if err != nil {
 		return nil, withCode(codeVerifyFailed, fmt.Errorf("verify failed: %w", err))
 	}
+	auditAfter(st)
 	return st, nil
 }
 
@@ -819,6 +824,7 @@ func disconnectOnSignal() {
 		case <-done:
 		case <-time.After(signalDisconnectTimeout):
 		}
+		auditInterrupted(sig)
 
 		// 기본 동작으로 되돌린 같은 시그널을 자신에게 보내 시그널로 종료함.
 		// exit 코드로 끝내면 셸 스크립트가 Ctrl+C 뒤에도 다음 명령을 계속 실행함
@@ -863,6 +869,11 @@ func init() {
 	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return withCode(codeInvalidArgument, err)
 	})
+
+	// 매트에 닿는 명령은 실행할 때마다 감사 기록을 남김 (끄는 옵션 없음)
+	for _, c := range auditCommands() {
+		withAudit(c)
+	}
 
 	// 루트 명령에 하위 명령 등록
 	// --version 출력을 version 하위 명령과 같은 형식으로 맞춤

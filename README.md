@@ -191,6 +191,22 @@ hotwatermat-ble status
 hotwatermat-ble --debug status
 ```
 
+### 감사 기록
+
+온열기기라서 매트에 닿는 명령(`scan`, `status`, `temp`, `on`, `off`, `setup`)은 실행할 때마다 감사 기록을 남깁니다. 끄는
+옵션은 없습니다. 기록은 명령마다 두 줄입니다. 매트에 닿기 전에 `attempt`(명령, 지정한 플래그, 버전, 부른 프로세스)를,
+끝난 뒤에 `result`(실제로 보낸 값, 결과 `ok` 또는 오류 `code`, 읽었으면 그 뒤 상태)를 남기고, 두 줄은 같은 `req`로
+이어집니다. 시그널로 중단되면 결과는 `interrupted`입니다. DeviceGid는 가려서 남깁니다.
+
+macOS에서는 통합 로그(os_log)로 남습니다. 통합 로그는 시스템이 관리하므로 같은 사용자 계정의 프로그램(에이전트 포함)은 root 권한 없이
+기록을 지우거나 고칠 수 없고, 줄마다 보낸 프로세스의 경로가 붙습니다. 통합 로그는 일정 기간이 지나면 지워지므로, 오래 보관하려면
+root 권한의 별도 수집기로 옮겨 담아야 합니다. 다른 플랫폼에서는 아직 남기지 않습니다.
+
+```bash
+# 최근 하루치 감사 기록
+log show --style ndjson --predicate 'subsystem == "io.github.minjun0219.hotwatermat-ble"' --last 1d
+```
+
 ## AI 에이전트
 
 이 저장소에는 AI 에이전트용 [스킬](skills/hotwatermat-ble/SKILL.md)이 들어 있습니다. 스킬은 에이전트에게 CLI 설치와
@@ -226,6 +242,7 @@ hotwatermat-ble/
 ├── pkg/protocol/          # 패킷 생성/파싱 (순수 Go, BLE 의존성 없음)
 ├── pkg/ble/               # BLE 클라이언트 (tinygo bluetooth)
 ├── pkg/config/            # 기기 설정 저장/로드
+├── pkg/audit/             # 감사 기록 (macOS 통합 로그)
 ├── cmd/hotwatermat-ble/   # CLI 바이너리
 ├── skills/hotwatermat-ble/ # AI 에이전트용 스킬 (Agent Skills 형식)
 ├── context7.json          # Context7 설정
@@ -236,8 +253,8 @@ hotwatermat-ble/
 ## 개발
 
 ```bash
-# 프로토콜 테스트
-go test -v -race ./pkg/protocol/...
+# 프로토콜·감사 기록 테스트
+go test -v -race ./pkg/protocol/... ./pkg/audit/...
 
 # CLI 빌드
 go build -o hotwatermat-ble ./cmd/hotwatermat-ble/

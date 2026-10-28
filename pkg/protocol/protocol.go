@@ -280,7 +280,7 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 // 패킷 구조:
 //
 //	[0]=0xB2(STX) [1]=0x80(앱→매트) [2]=0x01(HEAT) [3]=side
-//	[4]=0x00(볼륨/수위) [5]=0x02(HEAT고정) [6]=0x25(HEAT고정)
+//	[4]=0x00(볼륨/수위) [5]=0x02(양쪽 운전, BuildHeatRun 참고) [6]=0x25(HEAT고정)
 //	[7]=leftCur [8]=rightCur [9]=0x23(HEAT고정)
 //	[10]=leftTarget [11]=rightTarget [12..18]=0xFE(패딩)
 //	[19]=체크섬
@@ -292,13 +292,25 @@ func BuildHandshakeWithKey(gid [6]byte) [PacketSize]byte {
 //	rightTgt, _ := protocol.EncodeTemp(28.0) // → 28 (0x1C)
 //	pkt := protocol.BuildHeat(SideLeft, status.LeftCurrentRaw, status.RightCurrentRaw, leftTgt, rightTgt)
 func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [PacketSize]byte {
+	return BuildHeatRun(side, RunBoth, leftCur, rightCur, leftTarget, rightTarget)
+}
+
+// BuildHeatRun은 byte[5]에 운전할 면(run)을 지정해 HEAT 명령 패킷을 생성합니다.
+//
+// run은 STATUS byte[5]와 같은 뜻입니다 (이슈 #69, 실기기 확인).
+//   - RunBoth(0x02): 양쪽 운전. 대기인 쪽은 그쪽 현재 온도 칸이 28.0일 때 깨어남 (HeatCurrents 참고)
+//   - RunLeftOnly(0x03): 오른쪽을 '운전 대기'로 둠
+//   - RunRightOnly(0x04): 왼쪽을 '운전 대기'로 둠
+//
+// 나머지 바이트는 BuildHeat와 같습니다.
+func BuildHeatRun(side, run byte, leftCur, rightCur, leftTarget, rightTarget byte) [PacketSize]byte {
 	var pkt [PacketSize]byte
 	pkt[0] = STX
 	pkt[1] = DirAppToMat  // 앱 → 매트 방향
 	pkt[2] = ModeHeat     // 난방 모드 (0x01)
 	pkt[3] = side         // 좌/우 선택
 	pkt[4] = 0x00         // 볼륨/수위 (난방 명령에서는 0)
-	pkt[5] = 0x02         // HEAT 모드 고정값
+	pkt[5] = run          // 운전할 면 (RunBoth, RunLeftOnly, RunRightOnly)
 	pkt[6] = 0x25         // HEAT 모드 고정값
 	pkt[7] = leftCur      // 왼쪽 현재 온도 (STATUS에서 받은 원시 바이트)
 	pkt[8] = rightCur     // 오른쪽 현재 온도 (STATUS에서 받은 원시 바이트)
@@ -328,6 +340,21 @@ func HeatCurrents(st *Status, side byte) (leftCur, rightCur byte) {
 		rightCur = standbyWakeCurrent
 	}
 	return leftCur, rightCur
+}
+
+// HeatRun은 HEAT 명령의 byte[5](운전할 면)를 STATUS와 side로 정합니다.
+//
+// side가 고른 쪽은 운전으로 바꾸고(대기였으면 깨움), 고르지 않은 쪽이 대기이면 대기로 둡니다.
+// 늘 0x02(양쪽 운전)를 보내면, 고르지 않은 대기 쪽의 현재 온도가 28.0 이하일 때 그쪽까지 깨울 수 있습니다.
+func HeatRun(st *Status, side byte) byte {
+	switch {
+	case st.LeftStandby && side&SideLeft == 0:
+		return RunRightOnly
+	case st.RightStandby && side&SideRight == 0:
+		return RunLeftOnly
+	default:
+		return RunBoth
+	}
 }
 
 // standbyWakeCurrent는 대기인 쪽을 깨울 때 HEAT의 현재 온도 칸에 넣는 값입니다 (28.0°C).
@@ -475,11 +502,13 @@ type Status struct {
 	PoweredOff bool
 }
 
-// STATUS byte[5]는 어느 쪽이 운전 중인지를 나타냅니다 (#67, 실기기 확인).
-// 0x02는 양쪽 운전이고, 한쪽이 '운전 대기'면 아래 값이 됩니다. 양쪽 모두 대기인 값은 아직 확인되지 않았습니다.
+// byte[5]는 어느 쪽이 운전 중인지를 나타냅니다 (#67, #69, 실기기 확인).
+// STATUS에서는 지금 상태이고, HEAT 명령(BuildHeatRun)에서는 원하는 상태입니다.
+// 양쪽 모두 대기인 값은 없습니다 (앱이 막고, 양쪽을 끄려면 전원을 끔).
 const (
-	rightStandbyField5 = 0x03 // 왼쪽만 운전, 오른쪽 대기
-	leftStandbyField5  = 0x04 // 오른쪽만 운전, 왼쪽 대기
+	RunBoth      byte = 0x02 // 양쪽 운전
+	RunLeftOnly  byte = 0x03 // 왼쪽만 운전, 오른쪽 대기
+	RunRightOnly byte = 0x04 // 오른쪽만 운전, 왼쪽 대기
 )
 
 // ParseStatus는 매트에서 수신한 20바이트 상태 알림 패킷을 파싱합니다.
@@ -553,8 +582,8 @@ func ParseStatus(data []byte) (*Status, error) {
 		RightTarget:     rightTarget,
 		SubCmd:          data[12],
 		Raw:             raw,
-		LeftStandby:     !poweredOff && data[5] == leftStandbyField5,
-		RightStandby:    !poweredOff && data[5] == rightStandbyField5,
+		LeftStandby:     !poweredOff && data[5] == RunRightOnly,
+		RightStandby:    !poweredOff && data[5] == RunLeftOnly,
 		PoweredOff:      poweredOff,
 	}, nil
 }

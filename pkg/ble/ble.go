@@ -628,11 +628,12 @@ func (c *Client) write(pkt []byte) error {
 //   - rightTemp: 오른쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
 //
 // 내부 동작:
-//  1. GetStatus로 현재 온도(원시 바이트) 획득 (3초 타임아웃)
-//  2. HeatCurrents로 현재 온도 칸 결정 (대기인 쪽은 28.0으로 바꿔 깨움)
-//  3. EncodeTemp로 목표 온도를 바이트로 인코딩
-//  4. BuildHeat로 HEAT 명령 패킷 생성
-//  5. CHAR2(cmdChar)로 패킷 전송
+//  1. GetStatus로 현재 온도(원시 바이트)와 대기 여부 획득 (3초 타임아웃)
+//  2. HeatCurrents·HeatRun으로 현재 온도 칸과 운전할 면을 정해 HEAT 전송
+//     (대기인 쪽은 현재 온도 칸을 28.0으로 보내 깨움, 이슈 #69)
+//  3. STATUS로 반영을 확인하고, 반영되지 않았으면 한 번 더 전송 (sendHeatConfirm)
+//
+// 반영되지 않아도 오류로 끝내지 않습니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다 (temp --verify).
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
 	st, err := c.GetStatus(3 * time.Second)
@@ -650,14 +651,63 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		return fmt.Errorf("encode right temp: %w", err)
 	}
 
-	// HEAT 명령 패킷 생성 및 전송. 대기인 쪽은 HeatCurrents가 현재 온도 칸을 바꿔 깨웁니다.
+	// 대기인 쪽은 HeatCurrents가 현재 온도 칸을 28.0으로 바꿔 깨웁니다
+	return c.sendHeatConfirm("HEAT", st, side, leftTgt, rightTgt, applyTimeout, func(s *protocol.Status) bool {
+		leftOK := side&protocol.SideLeft == 0 || (!s.LeftStandby && s.LeftTarget == leftTemp)
+		rightOK := side&protocol.SideRight == 0 || (!s.RightStandby && s.RightTarget == rightTemp)
+		return leftOK && rightOK
+	})
+}
+
+// sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
+//
+// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 첫 명령을 버릴 때가 있고,
+// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면 한 번 더 보냅니다.
+func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTgt, rightTgt byte, timeout time.Duration, ok func(*protocol.Status) bool) error {
+	if err := c.sendHeat(label, st, side, leftTgt, rightTgt); err != nil {
+		return err
+	}
+	after, done := c.waitStatus(timeout, ok)
+	if done {
+		return nil
+	}
+	if after == nil {
+		after = st
+	}
+	return c.sendHeat(label+" (retry)", after, side, leftTgt, rightTgt)
+}
+
+// applyTimeout은 HEAT 명령 뒤 목표 온도가 STATUS에 반영되기를 기다리는 최대 시간입니다.
+const applyTimeout = 3 * time.Second
+
+// sendHeat는 st를 기준으로 현재 온도 칸과 운전할 면을 정해 HEAT 명령을 보냅니다.
+func (c *Client) sendHeat(label string, st *protocol.Status, side, leftTgt, rightTgt byte) error {
 	leftCur, rightCur := protocol.HeatCurrents(st, side)
-	pkt := protocol.BuildHeat(side, leftCur, rightCur, leftTgt, rightTgt)
-	c.debugf("HEAT: %s", protocol.FormatPacket(pkt[:]))
+	pkt := protocol.BuildHeatRun(side, protocol.HeatRun(st, side), leftCur, rightCur, leftTgt, rightTgt)
+	c.debugf("%s: %s", label, protocol.FormatPacket(pkt[:]))
 	if err := c.write(pkt[:]); err != nil {
 		return fmt.Errorf("write set_temp command: %w", err)
 	}
 	return nil
+}
+
+// waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
+// 만족하는 STATUS를 받으면 (그 STATUS, true), 아니면 (마지막으로 받은 STATUS 또는 nil, false)를 반환합니다.
+func (c *Client) waitStatus(timeout time.Duration, ok func(*protocol.Status) bool) (*protocol.Status, bool) {
+	var last *protocol.Status
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c.ClearStatus()
+		st, err := c.GetStatus(time.Until(deadline))
+		if err != nil {
+			break
+		}
+		last = st
+		if ok(st) {
+			return st, true
+		}
+	}
+	return last, false
 }
 
 // PowerOn은 매트의 전원을 켭니다.

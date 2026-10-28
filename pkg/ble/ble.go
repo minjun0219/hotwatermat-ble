@@ -413,6 +413,11 @@ deviceFound:
 		// 타입별로 안전한 로그를 출력합니다.
 		authType, err := protocol.ParseAuthResponse(buf)
 		if err != nil {
+			// 인증 응답이 아닌 알림은 --debug에만 출력합니다. 명령 처리 완료 신호가 있는지 보려는 것입니다(#69).
+			// B2 F1로 시작하는 패킷은 DeviceGid가 들어 있을 수 있어 출력하지 않습니다.
+			if !(len(buf) >= 2 && buf[0] == protocol.STX && buf[1] == protocol.DirAuth) {
+				c.debugf("CHAR2: %s", protocol.FormatPacket(buf))
+			}
 			return
 		}
 		switch authType {
@@ -758,8 +763,9 @@ func (c *Client) SetStandby(side byte) error {
 	})
 }
 
-// applyTimeout은 HEAT 명령 뒤 목표 온도가 STATUS에 반영되기를 기다리는 최대 시간입니다.
-const applyTimeout = 3 * time.Second
+// applyTimeout은 명령 뒤 STATUS에 반영되기를 기다리는 최대 시간입니다.
+// 매트는 명령 하나를 처리하는 데 2-3초 걸려서, 처리 중에 재전송이 겹치지 않게 여유를 둡니다.
+const applyTimeout = 4 * time.Second
 
 // waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
 // 만족하는 STATUS를 받으면 (그 STATUS, true), 아니면 (마지막으로 받은 STATUS 또는 nil, false)를 반환합니다.

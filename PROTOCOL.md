@@ -234,7 +234,7 @@ Later checks (2026-10-28, STATUS `[5]` read with `--debug`):
 | 5: the official app wakes the left side | STATUS after it: `[3]=02 [10]=1C` (28.0) | runs again |
 | 6: left standby, `temp --left 28` (38.5 → 28.0) | `B2 80 01 02 00 02 25 A4 1C 23 1C 1C FE FE FE FE FE FE FE B7` | stays standby, STATUS unchanged |
 
-- A left standby side ignored every HEAT we sent: `[3]=02` with 28.0, 38.5 and 39.0, and `[3]=06` with unchanged values
+- A left standby side ignored every HEAT we sent: `[3]=02` with 28.0, 38.5 and 39.0
 - A right standby side woke on `[3]=04` with 28.0 and 28.5
 - The app woke the left side and left `[10]=1C` (28.0) and `[3]=02`, so its packet likely differs from ours in a byte we send fixed (`[4]=00`, `[5]=02`, `[6]=25`) or copy from STATUS (`[7]`, `[8]`). Unconfirmed; an HCI capture of the app waking the left side is the next step
 - `[3]=06` with unchanged values did not wake the right side (B)

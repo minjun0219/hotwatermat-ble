@@ -18,6 +18,7 @@ const (
 	codeDeviceNotFound       = "device_not_found"      // 매트가 광고하지 않음 (공식 앱 연결 중, 범위 밖 등) → 잠시 뒤 재시도
 	codeAuthFailed           = "auth_failed"           // 인증 응답 없음 (DeviceGid가 다름) → setup 다시
 	codeVerifyFailed         = "verify_failed"         // 명령은 보냈지만 --verify의 상태 확인에 실패
+	codeNotApplied           = "not_applied"           // 명령은 보냈지만 매트가 반영하지 않음 (예: '운전 대기'인 쪽) → 앱으로 확인
 	codeError                = "error"                 // 그 밖의 실패 (연결 끊김, 쓰기 실패, 상태 수신 실패 등)
 )
 
@@ -121,12 +122,17 @@ func newScanJSON(devices []ble.ScanResult) scanJSON {
 }
 
 // printCommandResult는 temp, on, off 명령의 결과를 JSON으로 출력합니다.
-// --verify면 상태를 다시 읽어 status에 담습니다.
-func printCommandResult(client *ble.Client, result commandJSON) error {
+// --verify면 상태를 다시 읽어 status에 담고, check가 있으면 그 상태로 명령이 반영됐는지 확인합니다.
+func printCommandResult(client *ble.Client, result commandJSON, check func(*protocol.Status) error) error {
 	if verify {
 		st, err := readStatusAfterCommand(client)
 		if err != nil {
 			return err
+		}
+		if check != nil {
+			if err := check(st); err != nil {
+				return err
+			}
 		}
 		result.Status = newStatusJSON(st)
 	}

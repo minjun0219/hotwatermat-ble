@@ -48,6 +48,8 @@ https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md
 | Version | `hotwatermat-ble version` |
 
 - Add `--verify` to `temp`, `on` and `off` to read the status again after the command and print it.
+  For `temp` it also checks that each side you set now has that target and is not in standby; if
+  not, it fails with `not_applied` (a side in standby can ignore `temp`).
   Prefer it: the command lines only say the packet was sent (`Power ON sent.`,
   `Temperature set: left=35.0°C right=35.0°C`), not that the mat accepted it.
 - Temperatures outside 28.0-48.0 or not in 0.5°C steps (`33.3`) are rejected before connecting,
@@ -102,6 +104,7 @@ exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one
 | `device_not_found` | The mat is not advertising: the vendor app is connected, it is out of range, or it went quiet | Retry after a pause |
 | `error` | Another BLE failure (connection dropped, write failed, no status) | Retry once |
 | `verify_failed` | The command was sent, but the status could not be read back | Run `status`; do not resend blindly |
+| `not_applied` | `temp --verify`: the command was sent, but the mat did not take it (the side is in standby, or the target differs) | Do not resend; ask the user to check the side in the app |
 | `bluetooth_unavailable` | Bluetooth is off or permission is denied | Ask the user |
 | `auth_failed` | The DeviceGid does not match this mat | Ask the user to re-run `setup` |
 | `not_configured` | No DeviceGid, or several mats and no `--address` | Ask the user |

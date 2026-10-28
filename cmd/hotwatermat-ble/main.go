@@ -29,6 +29,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -248,13 +249,18 @@ var tempCmd = &cobra.Command{
 			return err
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
+
+		// --verify: 지정한 쪽의 목표 온도가 실제로 바뀌었는지 확인 (대기인 쪽은 명령을 무시할 수 있음, #69)
+		check := func(st *protocol.Status) error {
+			return checkTempApplied(st, leftChanged, rightChanged, leftTemp, rightTemp)
+		}
 		if jsonOutput {
-			return printCommandResult(client, commandJSON{Sent: "temp", Left: leftTemp, Right: rightTemp})
+			return printCommandResult(client, commandJSON{Sent: "temp", Left: leftTemp, Right: rightTemp}, check)
 		}
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
 
 		if verify {
-			return verifyStatus(client)
+			return verifyStatus(client, check)
 		}
 		return nil
 	},
@@ -279,12 +285,12 @@ var onCmd = &cobra.Command{
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		if jsonOutput {
-			return printCommandResult(client, commandJSON{Sent: "on"})
+			return printCommandResult(client, commandJSON{Sent: "on"}, nil)
 		}
 		fmt.Println("Power ON sent.")
 
 		if verify {
-			return verifyStatus(client)
+			return verifyStatus(client, nil)
 		}
 		return nil
 	},
@@ -309,12 +315,12 @@ var offCmd = &cobra.Command{
 		}
 		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
 		if jsonOutput {
-			return printCommandResult(client, commandJSON{Sent: "off"})
+			return printCommandResult(client, commandJSON{Sent: "off"}, nil)
 		}
 		fmt.Println("Power OFF sent.")
 
 		if verify {
-			return verifyStatus(client)
+			return verifyStatus(client, nil)
 		}
 		return nil
 	},
@@ -501,14 +507,46 @@ func printSide(label string, current, target float64, standby bool) {
 }
 
 // verifyStatus는 명령 실행 후 상태를 다시 조회하여 출력합니다.
-// --verify 플래그가 활성화된 경우에만 호출됩니다.
-func verifyStatus(client *ble.Client) error {
+// --verify 플래그가 활성화된 경우에만 호출됩니다. check가 있으면 출력한 상태로 명령이 반영됐는지 확인합니다.
+func verifyStatus(client *ble.Client, check func(*protocol.Status) error) error {
 	st, err := readStatusAfterCommand(client)
 	if err != nil {
 		return err
 	}
 	fmt.Println("\n[Verify]")
 	printStatus(st)
+	if check != nil {
+		return check(st)
+	}
+	return nil
+}
+
+// checkTempApplied는 temp 명령 뒤 다시 읽은 상태에서, 사용자가 지정한 쪽의 목표 온도가 반영됐는지 확인합니다.
+// 대기인 쪽은 HEAT 명령을 받아도 대기를 유지하고 설정값도 바꾸지 않을 수 있어서(#69),
+// 대기이거나 목표 온도가 다르면 not_applied 오류를 반환합니다. 지정하지 않은 쪽은 확인하지 않습니다.
+func checkTempApplied(st *protocol.Status, leftChanged, rightChanged bool, left, right float64) error {
+	if st.PoweredOff {
+		return withCode(codeNotApplied, errors.New("not applied: the mat is powered off"))
+	}
+	check := func(name string, standby bool, got, want float64) error {
+		if standby {
+			return withCode(codeNotApplied, fmt.Errorf("not applied: %s side is still in standby (check it in the app)", name))
+		}
+		if got != want {
+			return withCode(codeNotApplied, fmt.Errorf("not applied: %s target is %.1f°C, expected %.1f°C", name, got, want))
+		}
+		return nil
+	}
+	if leftChanged {
+		if err := check("left", st.LeftStandby, st.LeftTarget, left); err != nil {
+			return err
+		}
+	}
+	if rightChanged {
+		if err := check("right", st.RightStandby, st.RightTarget, right); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

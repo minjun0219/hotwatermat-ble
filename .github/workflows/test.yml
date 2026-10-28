@@ -39,8 +39,36 @@ jobs:
         env:
           CGO_ENABLED: "0"
 
-      - name: Test protocol
-        run: go test -v -race ./pkg/protocol/...
+      - name: Test protocol and audit
+        run: go test -v -race ./pkg/protocol/... ./pkg/audit/...
+
+  # The darwin audit code (os_log) needs cgo and only builds on macOS, the same way the
+  # release build does. Build everything and run the audit tests there.
+  darwin:
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+        env:
+          CGO_ENABLED: "1"
+
+      - name: Build
+        run: go build ./...
+        env:
+          CGO_ENABLED: "1"
+
+      - name: Test audit
+        run: go test -v ./pkg/audit/...
+        env:
+          CGO_ENABLED: "1"
 
   # Context7 reads this file to serve the docs to coding agents. Over the schema limits
   # (e.g. a 200-character description) it gets rejected or truncated, so validate it here

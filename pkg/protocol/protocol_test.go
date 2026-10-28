@@ -504,6 +504,11 @@ func TestBuildHeatRun(t *testing.T) {
 	if got, want := FormatPacket(pkt[:]), "B2 80 01 06 00 03 25 1C 1C 23 26 1C FE FE FE FE FE FE FE 3E"; got != want {
 		t.Errorf("HEAT = %s, want %s", got, want)
 	}
+	// 오른쪽 36.5 운전 중 STATUS의 현재·설정 바이트로 오른쪽 대기를 건 패킷 (두 번째 전송에 걸림)
+	pkt = BuildHeatRun(SideBoth, RunLeftOnly, 0x26, 0xA4, 0xA6, 0xA4)
+	if got, want := FormatPacket(pkt[:]), "B2 80 01 06 00 03 25 26 A4 23 A6 A4 FE FE FE FE FE FE FE D8"; got != want {
+		t.Errorf("HEAT = %s, want %s", got, want)
+	}
 	// BuildHeat는 양쪽 운전(0x02)
 	if heat := BuildHeat(SideLeft, 0x1C, 0x1C, 0x1C, 0x1C); heat[5] != RunBoth {
 		t.Errorf("BuildHeat byte[5] = 0x%02X, want 0x%02X", heat[5], RunBoth)

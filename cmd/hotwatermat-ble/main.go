@@ -65,6 +65,8 @@ var (
 	rightTemp  float64 // 오른쪽 목표 온도 (--right, temp 명령에서 사용)
 	resetSetup bool    // 설정 초기화 (--reset-setup)
 	verify     bool    // 명령 실행 후 상태 확인 (--verify)
+	standbyL   bool    // 왼쪽을 대기로 (--left, standby 명령에서 사용)
+	standbyR   bool    // 오른쪽을 대기로 (--right, standby 명령에서 사용)
 	jsonOutput bool    // 결과와 오류를 JSON으로 stdout에 출력 (--json)
 )
 
@@ -258,6 +260,60 @@ var tempCmd = &cobra.Command{
 			return printCommandResult(client, commandJSON{Sent: "temp", Left: leftTemp, Right: rightTemp}, check)
 		}
 		fmt.Printf("Temperature set: left=%.1f°C right=%.1f°C\n", leftTemp, rightTemp)
+
+		if verify {
+			return verifyStatus(client, check)
+		}
+		return nil
+	},
+}
+
+// standbyCmd는 한쪽 매트를 '운전 대기'로 바꾸는 명령입니다.
+//
+// --left 또는 --right 중 하나를 지정합니다. 반대쪽은 지금 목표 온도로 계속 운전합니다.
+// 양쪽을 동시에 대기로 둘 수는 없으므로(공식 앱도 막음), 반대쪽이 이미 대기면 오류를 반환합니다.
+// 대기인 쪽을 다시 운전하려면 temp로 그쪽 온도를 정합니다.
+var standbyCmd = &cobra.Command{
+	Use:   "standby",
+	Short: "Put one side in standby (the other keeps running)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if standbyL == standbyR {
+			return withCode(codeInvalidArgument, fmt.Errorf("specify exactly one of --left or --right"))
+		}
+		side, name := protocol.SideLeft, "left"
+		if standbyR {
+			side, name = protocol.SideRight, "right"
+		}
+
+		client, err := connect()
+		if err != nil {
+			return err
+		}
+		defer client.Disconnect()
+
+		if err := client.SetStandby(side); err != nil {
+			if errors.Is(err, ble.ErrPoweredOff) || errors.Is(err, ble.ErrOtherSideStandby) {
+				return withCode(codeInvalidArgument, err)
+			}
+			return err
+		}
+		time.Sleep(postCommandDelay) // 매트가 명령을 처리할 시간 확보
+
+		// --verify: 지정한 쪽이 실제로 대기가 됐는지 확인
+		check := func(st *protocol.Status) error {
+			standby := st.LeftStandby
+			if side == protocol.SideRight {
+				standby = st.RightStandby
+			}
+			if !standby {
+				return withCode(codeNotApplied, fmt.Errorf("not applied: %s side is not in standby", name))
+			}
+			return nil
+		}
+		if jsonOutput {
+			return printCommandResult(client, commandJSON{Sent: "standby", Side: name}, check)
+		}
+		fmt.Printf("Standby set: %s\n", name)
 
 		if verify {
 			return verifyStatus(client, check)
@@ -787,6 +843,8 @@ func init() {
 
 	tempCmd.Flags().Float64Var(&leftTemp, "left", 0, "Left side target temperature (28.0-48.0)")
 	tempCmd.Flags().Float64Var(&rightTemp, "right", 0, "Right side target temperature (28.0-48.0)")
+	standbyCmd.Flags().BoolVar(&standbyL, "left", false, "Put the left side in standby")
+	standbyCmd.Flags().BoolVar(&standbyR, "right", false, "Put the right side in standby")
 
 	setupCmd.Flags().BoolVar(&resetSetup, "reset", false, "Clear cached device config")
 
@@ -794,9 +852,10 @@ func init() {
 	onCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 	offCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 	tempCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
+	standbyCmd.Flags().BoolVar(&verify, "verify", false, "Verify status after command")
 
 	// --json: 결과를 JSON 한 줄로 stdout에 출력 (다른 프로그램이 CLI를 띄워 읽을 때)
-	for _, c := range []*cobra.Command{scanCmd, statusCmd, tempCmd, onCmd, offCmd} {
+	for _, c := range []*cobra.Command{scanCmd, statusCmd, tempCmd, standbyCmd, onCmd, offCmd} {
 		c.Flags().BoolVar(&jsonOutput, "json", false, "Print the result (or error) as JSON on stdout")
 	}
 
@@ -809,5 +868,5 @@ func init() {
 	// --version 출력을 version 하위 명령과 같은 형식으로 맞춤
 	rootCmd.SetVersionTemplate("hotwatermat-ble {{.Version}}\n")
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd)
+	rootCmd.AddCommand(scanCmd, statusCmd, tempCmd, standbyCmd, onCmd, offCmd, setupCmd)
 }

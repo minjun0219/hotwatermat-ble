@@ -226,7 +226,7 @@ B2 80 01 06 00 03 25 1C 1C 23 26 1C FE FE FE FE FE FE FE 3E   → right: STATUS 
 B2 80 01 20 00 04 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE ..   → left:  STATUS [5] 02 → 04
 ```
 
-Both worked with different `[3]` values (`06`, `20`); the rule for `[3]` here is unknown.
+Both worked with different `[3]` values (`06`, `20`); the rule for `[3]` here is unknown. The CLI's `standby --left/--right` (`ble.Client.SetStandby`) sends `[3]=06`, STATUS current bytes in `[7]`/`[8]` and the current set values in `[10]`/`[11]`, and resends once if STATUS `[5]` does not change. Left standby with `[3]=06` is not yet confirmed on the mat.
 
 **Leaving standby:** send HEAT with `[5]=0x02` and that side's "current" byte (`[7]` left, `[8]` right) set to `1C` (28.0). With the side's real water temperature above 28 in that byte, the mat ignores the command. Confirmed packet, left standby with left water at 32.0:
 

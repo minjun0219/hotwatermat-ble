@@ -77,9 +77,10 @@ type sideJSON struct {
 	Standby bool    `json:"standby,omitempty"`
 }
 
-// commandJSON은 temp, on, off 명령의 --json 출력입니다.
+// commandJSON은 temp, standby, on, off 명령의 --json 출력입니다.
 type commandJSON struct {
-	Sent   string      `json:"sent"`             // 보낸 명령: "temp", "on", "off"
+	Sent   string      `json:"sent"`             // 보낸 명령: "temp", "standby", "on", "off"
+	Side   string      `json:"side,omitempty"`   // standby: 대기로 바꾼 쪽 ("left", "right")
 	Left   float64     `json:"left,omitempty"`   // temp: 보낸 왼쪽 목표 온도
 	Right  float64     `json:"right,omitempty"`  // temp: 보낸 오른쪽 목표 온도
 	Status *statusJSON `json:"status,omitempty"` // --verify: 명령 뒤 다시 읽은 상태
@@ -121,7 +122,7 @@ func newScanJSON(devices []ble.ScanResult) scanJSON {
 	return out
 }
 
-// printCommandResult는 temp, on, off 명령의 결과를 JSON으로 출력합니다.
+// printCommandResult는 temp, standby, on, off 명령의 결과를 JSON으로 출력합니다.
 // --verify면 상태를 다시 읽어 status에 담고, check가 있으면 그 상태로 명령이 반영됐는지 확인합니다.
 func printCommandResult(client *ble.Client, result commandJSON, check func(*protocol.Status) error) error {
 	if verify {

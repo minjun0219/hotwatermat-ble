@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,6 +172,13 @@ var (
 
 	// ErrAuthTimeout은 핸드셰이크 뒤 인증 응답이 오지 않을 때 반환됩니다. 대개 DeviceGid가 틀린 경우입니다.
 	ErrAuthTimeout = errors.New("authentication timeout")
+
+	// ErrPoweredOff는 전원이 꺼진 매트에 SetStandby를 요청했을 때 반환됩니다.
+	ErrPoweredOff = errors.New("the mat is powered off")
+
+	// ErrOtherSideStandby는 반대쪽이 이미 '운전 대기'인데 SetStandby를 요청했을 때 반환됩니다.
+	// 양쪽을 동시에 대기로 둘 수는 없습니다 (공식 앱도 막고, 양쪽을 끄려면 전원을 끕니다).
+	ErrOtherSideStandby = errors.New("the other side is already in standby")
 )
 
 // Client는 온수매트 BLE 기기와의 연결을 관리하는 클라이언트입니다.
@@ -659,12 +667,21 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	})
 }
 
-// sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
+// sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다 (writeConfirm 참고).
+func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTgt, rightTgt byte, timeout time.Duration, ok func(*protocol.Status) bool) error {
+	return c.writeConfirm(label, st, timeout, ok, func(st *protocol.Status) [protocol.PacketSize]byte {
+		leftCur, rightCur := protocol.HeatCurrents(st, side)
+		return protocol.BuildHeatRun(side, protocol.HeatRun(st, side), leftCur, rightCur, leftTgt, rightTgt)
+	})
+}
+
+// writeConfirm은 st로 만든 패킷을 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
 //
 // 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 첫 명령을 버릴 때가 있고,
-// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면 한 번 더 보냅니다.
-func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTgt, rightTgt byte, timeout time.Duration, ok func(*protocol.Status) bool) error {
-	if err := c.sendHeat(label, st, side, leftTgt, rightTgt); err != nil {
+// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면
+// 마지막으로 받은 STATUS로 패킷을 다시 만들어 한 번 더 보냅니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다.
+func (c *Client) writeConfirm(label string, st *protocol.Status, timeout time.Duration, ok func(*protocol.Status) bool, build func(*protocol.Status) [protocol.PacketSize]byte) error {
+	if err := c.writePacket(label, build(st)); err != nil {
 		return err
 	}
 	after, done := c.waitStatus(timeout, ok)
@@ -674,22 +691,67 @@ func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTg
 	if after == nil {
 		after = st
 	}
-	return c.sendHeat(label+" (retry)", after, side, leftTgt, rightTgt)
+	return c.writePacket(label+" (retry)", build(after))
+}
+
+// writePacket은 패킷을 디버그로 출력하고 CHAR2에 씁니다.
+func (c *Client) writePacket(label string, pkt [protocol.PacketSize]byte) error {
+	c.debugf("%s: %s", label, protocol.FormatPacket(pkt[:]))
+	if err := c.write(pkt[:]); err != nil {
+		return fmt.Errorf("write %s command: %w", strings.ToLower(label), err)
+	}
+	return nil
+}
+
+// SetStandby는 한쪽 매트를 '운전 대기'로 바꿉니다. 반대쪽은 지금 목표 온도로 계속 운전합니다.
+//
+// HEAT 명령의 byte[5](운전할 면)를 RunRightOnly(왼쪽 대기) 또는 RunLeftOnly(오른쪽 대기)로 보냅니다(이슈 #69, 실기기 확인).
+// 목표 온도 칸에는 STATUS의 지금 설정값을 그대로 넣습니다. 이미 대기인 쪽이면 아무것도 보내지 않습니다.
+//
+// 매개변수:
+//   - side: 대기로 바꿀 면 (protocol.SideLeft 또는 protocol.SideRight)
+//
+// 오류:
+//   - ErrPoweredOff: 전원이 꺼져 있음
+//   - ErrOtherSideStandby: 반대쪽이 이미 대기임
+func (c *Client) SetStandby(side byte) error {
+	st, err := c.GetStatus(3 * time.Second)
+	if err != nil {
+		return fmt.Errorf("get current status: %w", err)
+	}
+	if st.PoweredOff {
+		return fmt.Errorf("%w (power it on first)", ErrPoweredOff)
+	}
+
+	var run byte
+	var standby func(*protocol.Status) bool
+	switch side {
+	case protocol.SideLeft:
+		if st.RightStandby {
+			return fmt.Errorf("%w; both sides cannot be in standby (power the mat off instead)", ErrOtherSideStandby)
+		}
+		run, standby = protocol.RunRightOnly, func(s *protocol.Status) bool { return s.LeftStandby }
+	case protocol.SideRight:
+		if st.LeftStandby {
+			return fmt.Errorf("%w; both sides cannot be in standby (power the mat off instead)", ErrOtherSideStandby)
+		}
+		run, standby = protocol.RunLeftOnly, func(s *protocol.Status) bool { return s.RightStandby }
+	default:
+		return fmt.Errorf("standby side must be left or right, got 0x%02X", side)
+	}
+	if standby(st) {
+		c.debugf("Side already in standby, nothing sent")
+		return nil
+	}
+
+	return c.writeConfirm("STANDBY", st, applyTimeout, standby, func(st *protocol.Status) [protocol.PacketSize]byte {
+		// 실기기에서 대기를 건 패킷은 byte[3]이 06(양쪽)이었습니다
+		return protocol.BuildHeatRun(protocol.SideBoth, run, st.LeftCurrentRaw, st.RightCurrentRaw, st.Raw[10], st.Raw[11])
+	})
 }
 
 // applyTimeout은 HEAT 명령 뒤 목표 온도가 STATUS에 반영되기를 기다리는 최대 시간입니다.
 const applyTimeout = 3 * time.Second
-
-// sendHeat는 st를 기준으로 현재 온도 칸과 운전할 면을 정해 HEAT 명령을 보냅니다.
-func (c *Client) sendHeat(label string, st *protocol.Status, side, leftTgt, rightTgt byte) error {
-	leftCur, rightCur := protocol.HeatCurrents(st, side)
-	pkt := protocol.BuildHeatRun(side, protocol.HeatRun(st, side), leftCur, rightCur, leftTgt, rightTgt)
-	c.debugf("%s: %s", label, protocol.FormatPacket(pkt[:]))
-	if err := c.write(pkt[:]); err != nil {
-		return fmt.Errorf("write set_temp command: %w", err)
-	}
-	return nil
-}
 
 // waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
 // 만족하는 STATUS를 받으면 (그 STATUS, true), 아니면 (마지막으로 받은 STATUS 또는 nil, false)를 반환합니다.

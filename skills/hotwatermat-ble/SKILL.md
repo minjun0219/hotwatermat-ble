@@ -42,16 +42,18 @@ https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md
 | Show status | `hotwatermat-ble status` |
 | Set both sides | `hotwatermat-ble temp --left 35 --right 35` |
 | Set one side (the other keeps its target) | `hotwatermat-ble temp --left 33.5` / `hotwatermat-ble temp --right 40` |
+| Put one side in standby (the other keeps running) | `hotwatermat-ble standby --left` / `hotwatermat-ble standby --right` |
 | Power on (the mat restores its previous targets) | `hotwatermat-ble on` |
 | Power off | `hotwatermat-ble off` |
 | Find mats nearby (no key needed) | `hotwatermat-ble scan` |
 | Version | `hotwatermat-ble version` |
 
-- Add `--verify` to `temp`, `on` and `off` to read the status again after the command and print it.
-  For `temp` it also checks that each side you set now has that target and is not in standby; if
-  not, it fails with `not_applied` (the mat can ignore a command, e.g. for a side in standby).
+- Add `--verify` to `temp`, `standby`, `on` and `off` to read the status again after the command and
+  print it. For `temp` it also checks that each side you set now has that target and is not in
+  standby, and for `standby` that the side is now in standby; if not, it fails with `not_applied`
+  (the mat can ignore a command).
   Prefer it: the command lines only say the packet was sent (`Power ON sent.`,
-  `Temperature set: left=35.0°C right=35.0°C`), not that the mat accepted it.
+  `Temperature set: left=35.0°C right=35.0°C`, `Standby set: right`), not that the mat accepted it.
 - Temperatures outside 28.0-48.0 or not in 0.5°C steps (`33.3`) are rejected before connecting,
   so round the user's request to the nearest 0.5.
 - `--debug` prints the BLE exchange; use it only when diagnosing a failure.
@@ -76,9 +78,12 @@ Right:   30.0°C → 35.0°C
 
 - `Left` / `Right` are `current → target`. A side in standby (switched on in the app but not
   running) prints only its current temperature, e.g. `Right:   25.0°C (standby)`.
+- `standby --left` / `standby --right` puts that side in standby; the other side keeps running.
+  Both sides cannot be in standby at once: if the other side already is, it fails with
+  `invalid_argument` (use `off` to stop both). It also fails with `invalid_argument` when the mat
+  is off.
 - `temp` on a side in standby wakes it and sets the requested value. A standby side you did not
-  specify stays in standby. Use `--verify` to confirm. The CLI cannot put a side into standby;
-  that needs the official app.
+  specify stays in standby. Use `--verify` to confirm.
 - `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
 - Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to
@@ -87,7 +92,7 @@ Right:   30.0°C → 35.0°C
 
 ## JSON output (`--json`)
 
-When a program reads the result, add `--json` to `scan`, `status`, `temp`, `on` or `off`. Stdout
+When a program reads the result, add `--json` to `scan`, `status`, `temp`, `standby`, `on` or `off`. Stdout
 then holds exactly one JSON object; progress lines still go to stderr.
 
 | Command | Stdout |
@@ -95,11 +100,12 @@ then holds exactly one JSON object; progress lines still go to stderr.
 | `status --json` (mat off) | `{"power":"off"}` |
 | `status --json` (mat on) | `{"power":"on","mode":"HEAT","side":"both","water":"OK","left":{"current":31.5,"target":35},"right":{"current":30,"target":35}}` |
 | `temp --left 35 --right 35 --json` | `{"sent":"temp","left":35,"right":35}` |
+| `standby --right --json` | `{"sent":"standby","side":"right"}` |
 | `on --json` / `off --json` | `{"sent":"on"}` / `{"sent":"off"}` |
 | `scan --json` | `{"devices":[{"address":"…","name":"KDO_HotWaterMat","rssi":-58}]}` (`[]` if none) |
 
 A side in standby gets `"standby":true`; its `target` is the last set value the mat still keeps,
-not a running target. With `--verify`, `temp`/`on`/`off` add a `status` object shaped like `status --json`. On failure the
+not a running target. With `--verify`, `temp`/`standby`/`on`/`off` add a `status` object shaped like `status --json`. On failure the
 exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one of:
 
 | `code` | Meaning | What to do |
@@ -107,11 +113,11 @@ exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one
 | `device_not_found` | The mat is not advertising: the vendor app is connected, it is out of range, or it went quiet | Retry after a pause |
 | `error` | Another BLE failure (connection dropped, write failed, no status) | Retry once |
 | `verify_failed` | The command was sent, but the status could not be read back | Run `status`; do not resend blindly |
-| `not_applied` | `temp --verify`: the command was sent, but the mat did not take it (the side is in standby, or the target differs) | Do not resend; ask the user to check the side in the app |
+| `not_applied` | `temp --verify` / `standby --verify`: the command was sent, but the mat did not take it (the side is in standby or not, or the target differs) | Do not resend; ask the user to check the side in the app |
 | `bluetooth_unavailable` | Bluetooth is off or permission is denied | Ask the user |
 | `auth_failed` | The DeviceGid does not match this mat | Ask the user to re-run `setup` |
 | `not_configured` | No DeviceGid, or several mats and no `--address` | Ask the user |
-| `invalid_argument` | Bad flag or value (e.g. a temperature out of range) | Fix the call |
+| `invalid_argument` | Bad flag or value (e.g. a temperature out of range), or `standby` cannot run (mat off, other side already in standby) | Fix the call, or tell the user |
 
 A mat that is busy with another connection looks the same as one out of range: both are
 `device_not_found`.

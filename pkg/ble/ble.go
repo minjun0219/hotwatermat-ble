@@ -413,6 +413,11 @@ deviceFound:
 		// 타입별로 안전한 로그를 출력합니다.
 		authType, err := protocol.ParseAuthResponse(buf)
 		if err != nil {
+			// 인증 응답이 아닌 알림은 --debug에만 출력합니다. 명령 처리 완료 신호가 있는지 보려는 것입니다(#69).
+			// B2 F1로 시작하는 패킷은 DeviceGid가 들어 있을 수 있어 출력하지 않습니다.
+			if !(len(buf) >= 2 && buf[0] == protocol.STX && buf[1] == protocol.DirAuth) {
+				c.debugf("CHAR2: %s", protocol.FormatPacket(buf))
+			}
 			return
 		}
 		switch authType {
@@ -677,22 +682,30 @@ func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTg
 
 // writeConfirm은 st로 만든 패킷을 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
 //
-// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 첫 명령을 버릴 때가 있고,
-// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면
-// 마지막으로 받은 STATUS로 패킷을 다시 만들어 한 번 더 보냅니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다.
+// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 명령을 버릴 때가 있고,
+// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 왼쪽 대기를 깨울 때는
+// 첫 명령은 버려지고, 둘째는 byte[3]만 06→02로 바꾸고, 셋째에야 적용된 적이 있습니다.
+// 그래서 ok를 만족하지 않으면 마지막으로 받은 STATUS로 패킷을 다시 만들어 최대 maxSendAttempts번까지 보냅니다.
+// 반영 여부는 호출하는 쪽이 STATUS로 확인합니다.
 func (c *Client) writeConfirm(label string, st *protocol.Status, timeout time.Duration, ok func(*protocol.Status) bool, build func(*protocol.Status) [protocol.PacketSize]byte) error {
-	if err := c.writePacket(label, build(st)); err != nil {
-		return err
+	name := label
+	for attempt := 1; ; attempt++ {
+		if err := c.writePacket(name, build(st)); err != nil {
+			return err
+		}
+		after, done := c.waitStatus(timeout, ok)
+		if done || attempt == maxSendAttempts {
+			return nil
+		}
+		if after != nil {
+			st = after
+		}
+		name = fmt.Sprintf("%s (retry %d)", label, attempt)
 	}
-	after, done := c.waitStatus(timeout, ok)
-	if done {
-		return nil
-	}
-	if after == nil {
-		after = st
-	}
-	return c.writePacket(label+" (retry)", build(after))
 }
+
+// maxSendAttempts는 반영되지 않은 명령을 보내는 최대 횟수입니다 (처음 1번 + 재전송 2번).
+const maxSendAttempts = 3
 
 // writePacket은 패킷을 디버그로 출력하고 CHAR2에 씁니다.
 func (c *Client) writePacket(label string, pkt [protocol.PacketSize]byte) error {
@@ -750,8 +763,9 @@ func (c *Client) SetStandby(side byte) error {
 	})
 }
 
-// applyTimeout은 HEAT 명령 뒤 목표 온도가 STATUS에 반영되기를 기다리는 최대 시간입니다.
-const applyTimeout = 3 * time.Second
+// applyTimeout은 명령 뒤 STATUS에 반영되기를 기다리는 최대 시간입니다.
+// 매트는 명령 하나를 처리하는 데 2-3초 걸려서, 처리 중에 재전송이 겹치지 않게 여유를 둡니다.
+const applyTimeout = 4 * time.Second
 
 // waitStatus는 새로 받은 STATUS가 ok를 만족할 때까지 최대 timeout 동안 기다립니다.
 // 만족하는 STATUS를 받으면 (그 STATUS, true), 아니면 (마지막으로 받은 STATUS 또는 nil, false)를 반환합니다.

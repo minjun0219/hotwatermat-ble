@@ -51,7 +51,7 @@ type Record struct {
 	V       int            `json:"v"`                 // 형식 버전
 	Req     string         `json:"req"`               // attempt와 result를 잇는 요청 ID
 	Phase   string         `json:"phase"`             // PhaseAttempt 또는 PhaseResult
-	Op      string         `json:"op"`                // CLI 명령 이름 (scan, status, temp, on, off, setup)
+	Op      string         `json:"op"`                // CLI 명령 이름 (scan, status, temp, standby, on, off, setup)
 	Args    map[string]any `json:"args,omitempty"`    // attempt: 지정한 플래그
 	Version string         `json:"version,omitempty"` // attempt: CLI 버전
 	Caller  *Caller        `json:"caller,omitempty"`  // attempt: 호출자

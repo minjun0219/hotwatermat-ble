@@ -193,7 +193,7 @@ hotwatermat-ble --debug status
 
 ### 감사 기록
 
-온열기기라서 매트에 닿는 명령(`scan`, `status`, `temp`, `on`, `off`, `setup`)은 실행할 때마다 감사 기록을 남깁니다. 끄는
+온열기기라서 매트에 닿는 명령(`scan`, `status`, `temp`, `standby`, `on`, `off`, `setup`)은 실행할 때마다 감사 기록을 남깁니다. 끄는
 옵션은 없습니다. 기록은 명령마다 두 줄입니다. 매트에 닿기 전에 `attempt`(명령, 지정한 플래그, 버전, 부른 프로세스)를,
 끝난 뒤에 `result`(실제로 보낸 값, 결과 `ok` 또는 오류 `code`, 읽었으면 그 뒤 상태)를 남기고, 두 줄은 같은 `req`로
 이어집니다. 시그널로 중단되면 결과는 `interrupted`입니다. DeviceGid는 가려서 남깁니다.

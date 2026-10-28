@@ -677,22 +677,30 @@ func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTg
 
 // writeConfirm은 st로 만든 패킷을 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
 //
-// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 첫 명령을 버릴 때가 있고,
-// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면
-// 마지막으로 받은 STATUS로 패킷을 다시 만들어 한 번 더 보냅니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다.
+// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 명령을 버릴 때가 있고,
+// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 왼쪽 대기를 깨울 때는
+// 첫 명령은 버려지고, 둘째는 byte[3]만 06→02로 바꾸고, 셋째에야 적용된 적이 있습니다.
+// 그래서 ok를 만족하지 않으면 마지막으로 받은 STATUS로 패킷을 다시 만들어 최대 maxSendAttempts번까지 보냅니다.
+// 반영 여부는 호출하는 쪽이 STATUS로 확인합니다.
 func (c *Client) writeConfirm(label string, st *protocol.Status, timeout time.Duration, ok func(*protocol.Status) bool, build func(*protocol.Status) [protocol.PacketSize]byte) error {
-	if err := c.writePacket(label, build(st)); err != nil {
-		return err
+	name := label
+	for attempt := 1; ; attempt++ {
+		if err := c.writePacket(name, build(st)); err != nil {
+			return err
+		}
+		after, done := c.waitStatus(timeout, ok)
+		if done || attempt == maxSendAttempts {
+			return nil
+		}
+		if after != nil {
+			st = after
+		}
+		name = fmt.Sprintf("%s (retry %d)", label, attempt)
 	}
-	after, done := c.waitStatus(timeout, ok)
-	if done {
-		return nil
-	}
-	if after == nil {
-		after = st
-	}
-	return c.writePacket(label+" (retry)", build(after))
 }
+
+// maxSendAttempts는 반영되지 않은 명령을 보내는 최대 횟수입니다 (처음 1번 + 재전송 2번).
+const maxSendAttempts = 3
 
 // writePacket은 패킷을 디버그로 출력하고 CHAR2에 씁니다.
 func (c *Client) writePacket(label string, pkt [protocol.PacketSize]byte) error {

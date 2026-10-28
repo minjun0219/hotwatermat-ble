@@ -14,7 +14,7 @@ import (
 // auditCommands는 매트에 닿는 명령입니다. 이 명령들은 실행할 때마다 감사 기록을 남기고, 끄는 옵션은 없습니다.
 // 온열기기라 누가 언제 무엇을 했는지 남겨야 하고, 기록은 같은 사용자 계정의 에이전트가 지울 수 없는 곳(통합 로그)에 둡니다.
 func auditCommands() []*cobra.Command {
-	return []*cobra.Command{scanCmd, statusCmd, tempCmd, onCmd, offCmd, setupCmd}
+	return []*cobra.Command{scanCmd, statusCmd, tempCmd, standbyCmd, onCmd, offCmd, setupCmd}
 }
 
 // auditState는 실행 중인 명령의 감사 기록 상태입니다. 시그널 핸들러도 result를 남기므로 잠금으로 보호합니다.

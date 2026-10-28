@@ -134,7 +134,7 @@ A mat that is busy with another connection looks the same as one out of range: b
   seconds, so give the command a timeout of at least 60 seconds.
 - The DeviceGid is the mat's authentication key. Do not print it in full, write it into files you
   commit, or paste it into issues and logs. `setup` itself only shows it masked (`A1****F6`).
-- Every command that touches the mat (`scan`, `status`, `temp`, `on`, `off`, `setup`) writes an
+- Every command that touches the mat (`scan`, `status`, `temp`, `standby`, `on`, `off`, `setup`) writes an
   audit record (an `attempt` line before, a `result` line after) to the macOS unified log under the
   subsystem `io.github.minjun0219.hotwatermat-ble`. There is no flag or variable to turn it off,
   and the records cannot be removed from the user account. Do not try to avoid or remove them.

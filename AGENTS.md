@@ -23,7 +23,7 @@ those, update them in the same PR.
 
 ## Audit Records
 
-Every CLI command that touches the mat (`scan`, `status`, `temp`, `on`, `off`, `setup`) is wrapped by
+Every CLI command that touches the mat (`scan`, `status`, `temp`, `standby`, `on`, `off`, `setup`) is wrapped by
 `withAudit` and emits an `attempt` record before and a `result` record after, linked by `req`.
 The mat is a heating appliance, so this is not optional: never add a flag or env variable that skips
 it, and wrap any new command that connects to the mat. Records go to the macOS unified log because a

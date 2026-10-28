@@ -293,6 +293,7 @@ var standbyCmd = &cobra.Command{
 		}
 		defer client.Disconnect()
 
+		auditSent(map[string]any{"standby": name})
 		if err := client.SetStandby(side); err != nil {
 			if errors.Is(err, ble.ErrPoweredOff) || errors.Is(err, ble.ErrOtherSideStandby) {
 				return withCode(codeInvalidArgument, err)

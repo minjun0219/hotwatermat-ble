@@ -631,7 +631,7 @@ func (c *Client) write(pkt []byte) error {
 //  1. GetStatus로 현재 온도(원시 바이트)와 대기 여부 획득 (3초 타임아웃)
 //  2. HeatCurrents·HeatRun으로 현재 온도 칸과 운전할 면을 정해 HEAT 전송
 //     (대기인 쪽은 현재 온도 칸을 28.0으로 보내 깨움, 이슈 #69)
-//  3. STATUS로 반영을 확인하고, 반영되지 않았는데 STATUS byte[3](좌우 연동)이 바뀌었으면 한 번 더 전송 (sendHeatConfirm)
+//  3. STATUS로 반영을 확인하고, 반영되지 않았으면 한 번 더 전송 (sendHeatConfirm)
 //
 // 반영되지 않아도 오류로 끝내지 않습니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다 (temp --verify).
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
@@ -661,15 +661,18 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 
 // sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다.
 //
-// 좌우 연동(STATUS byte[3]=0x06)에서 한쪽만 고른 명령을 보내면, 매트는 첫 명령으로 byte[3]만 바꾸고
-// 나머지는 버릴 때가 있습니다(실기기 확인). 그래서 ok를 만족하지 않았는데 byte[3]이 바뀌었으면 한 번 더 보냅니다.
+// 매트는 좌우 연동(STATUS byte[3])이나 운전할 면(byte[5])을 바꾸는 첫 명령을 버릴 때가 있고,
+// 같은 명령을 다시 보내면 적용했습니다(실기기 확인, 규칙은 미확정). 그래서 ok를 만족하지 않으면 한 번 더 보냅니다.
 func (c *Client) sendHeatConfirm(label string, st *protocol.Status, side, leftTgt, rightTgt byte, timeout time.Duration, ok func(*protocol.Status) bool) error {
 	if err := c.sendHeat(label, st, side, leftTgt, rightTgt); err != nil {
 		return err
 	}
 	after, done := c.waitStatus(timeout, ok)
-	if done || after == nil || after.Side == st.Side {
+	if done {
 		return nil
+	}
+	if after == nil {
+		after = st
 	}
 	return c.sendHeat(label+" (retry)", after, side, leftTgt, rightTgt)
 }

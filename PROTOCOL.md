@@ -241,7 +241,7 @@ B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F   → STATUS [5] 04 
 - Earlier wakes fit this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`.
 - Unknown: whether values below 28 in `[7]`/`[8]` also wake a side.
 
-**Side link (STATUS `[3]`, observed 2026-10-28):** with STATUS `[3]=06`, the first left-only HEAT (`[3]=02`) only switches STATUS `[3]` to `02` and drops the new target; the same command sent again applies. Seen with `temp --left 38.5` (`[10]` stayed `26`, then `A6` on the retry). A right-only command (`[3]=04`) from `06` applied at once. Some of the failed wakes below may include this effect. `ble.Client.SetTemp` resends a HEAT once when STATUS `[3]` changed but the command did not apply.
+**Side link (STATUS `[3]`, observed 2026-10-28):** with STATUS `[3]=06`, the first left-only HEAT (`[3]=02`) only switches STATUS `[3]` to `02` and drops the new target; the same command sent again applies. Seen with `temp --left 38.5` (`[10]` stayed `26`, then `A6` on the retry). A right-only command (`[3]=04`) from `06` applied at once. Entering right standby (`B2 80 01 06 00 03 25 26 A4 23 A6 A4 FE FE FE FE FE FE FE D8`) was also ignored the first time and applied the second time, with STATUS `[3]` already `06`, so changing `[5]` can drop the first command too. Another time it applied at once; the rule is not settled. Some of the failed wakes below may include this effect. `ble.Client.SetTemp` resends a HEAT once when STATUS shows it did not apply.
 
 Earlier HEAT attempts (bytes counted from 0, checksums valid):
 

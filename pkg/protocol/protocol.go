@@ -313,6 +313,26 @@ func BuildHeat(side byte, leftCur, rightCur, leftTarget, rightTarget byte) [Pack
 	return pkt
 }
 
+// HeatCurrents는 BuildHeat의 leftCur, rightCur에 넣을 바이트를 STATUS에서 고릅니다.
+//
+// 보통은 STATUS의 현재 온도(byte[7], byte[8])를 그대로 씁니다.
+// side가 고른 쪽이 '운전 대기'이면 그쪽 칸에는 현재 온도 대신 28.0°C(0x1C)를 넣습니다.
+// 실기기에서 대기인 쪽은 이 칸이 28.0일 때만 깨어났고, 현재 수온(예: 32.0, 36.5)을 넣으면
+// HEAT를 무시했습니다(이슈 #69). 28.0보다 낮은 값도 깨우는지는 확인하지 않았습니다.
+func HeatCurrents(st *Status, side byte) (leftCur, rightCur byte) {
+	leftCur, rightCur = st.LeftCurrentRaw, st.RightCurrentRaw
+	if st.LeftStandby && side&SideLeft != 0 {
+		leftCur = standbyWakeCurrent
+	}
+	if st.RightStandby && side&SideRight != 0 {
+		rightCur = standbyWakeCurrent
+	}
+	return leftCur, rightCur
+}
+
+// standbyWakeCurrent는 대기인 쪽을 깨울 때 HEAT의 현재 온도 칸에 넣는 값입니다 (28.0°C).
+const standbyWakeCurrent byte = 0x1C
+
 // BuildPowerOn은 전원 켜기(Power ON) 명령 패킷을 생성합니다.
 //
 // 매트의 전원을 켤 때 사용합니다.

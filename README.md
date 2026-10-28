@@ -145,6 +145,8 @@ hotwatermat-ble temp --left 35 --right 35 --verify --json
 ```
 
 한쪽이 '운전 대기' 상태면 `status`는 그쪽 현재 온도만 `Right:   25.0°C (standby)`처럼 보여 주고, `--json`에서는 그쪽에 `"standby":true`가 붙습니다.
+
+`temp`로 대기인 쪽의 온도를 정하면 그쪽을 깨워 다시 운전합니다. 실기기에서는 28.0°C로 확인했고, 다른 온도에서도 깨어나는지는 `--verify`로 확인하세요. 한쪽을 대기로 거는 명령은 아직 없으니 앱을 쓰세요.
 이때 `target`은 매트에 남아 있는 마지막 설정값입니다.
 
 실패하면 종료 코드는 1이고, stdout에 `{"code":"…","error":"…"}`가 출력됩니다. `code`로 실패 원인을 구분할 수 있습니다.
@@ -154,6 +156,7 @@ hotwatermat-ble temp --left 35 --right 35 --verify --json
 | `device_not_found` | 매트가 보이지 않음 (공식 앱 연결 중, 범위 밖 등). 잠시 뒤 다시 시도 |
 | `error` | 그 밖의 BLE 실패 (연결 끊김, 쓰기 실패, 상태 수신 실패 등) |
 | `verify_failed` | 명령은 보냈지만 `--verify`의 상태 확인에 실패 |
+| `not_applied` | `temp --verify`에서 명령은 보냈지만 매트가 반영하지 않음 (그쪽이 '운전 대기'이거나 목표 온도가 다름). 앱에서 확인 |
 | `bluetooth_unavailable` | 블루투스가 꺼져 있거나 권한이 없음 |
 | `auth_failed` | DeviceGid가 이 매트와 맞지 않음 |
 | `not_configured` | DeviceGid가 없거나, 매트가 여러 대인데 `--address`가 없음 |

@@ -235,8 +235,8 @@ B2 80 01 02 00 02 25 1C 1C 23 1C 1C FE FE FE FE FE FE FE 2F   → STATUS [5] 04 
 ```
 
 - Left: `[7]=1C` with a target of 38 also woke the side and applied 38 in one command.
-- Right: `[8]=1C` with a target of 38 did not wake it; it woke only with a target of 28.0 (or 28.5 in case C). The official app also wakes a side at 28.0 and raises it afterwards.
-- So `temp` wakes a standby side at 28.0 first, waits for STATUS `[5]` to show it running, then sends the requested target (`ble.Client.SetTemp`). Waking the right side from water above 28 in two steps is not yet confirmed on the mat.
+- Right: `[8]=1C` with a target of 36.5 woke the side and applied 36.5 in one command (`B2 80 01 04 00 02 25 24 1C 23 A6 A4 FE FE FE FE FE FE FE 4B`, STATUS `[5]` 03 → 02, `[11]=A4`). The right water was at 28.0 then. An earlier right-side try with 38 failed, likely because the first command after a side-link change was dropped (see Side link below)
+- So `temp` sends one HEAT with `1C` in the standby side's current byte and the requested target (`protocol.HeatCurrents`, `ble.Client.SetTemp`). Waking a right side whose water is above 28 this way is not yet confirmed on the mat
 - A side that `temp` does not target keeps its standby: the CLI sends `[5]=0x03`/`0x04` for it instead of `0x02` (`protocol.HeatRun`).
 - Earlier wakes fit this: in cases C and 3 the right water had cooled to 28.0, so the copied `[8]` was already `1C`.
 - Unknown: whether values below 28 in `[7]`/`[8]` also wake a side.

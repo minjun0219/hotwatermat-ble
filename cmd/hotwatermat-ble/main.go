@@ -206,7 +206,7 @@ var tempCmd = &cobra.Command{
 			return withCode(codeInvalidArgument, fmt.Errorf("specify --left and/or --right temperature"))
 		}
 
-		// 범위(28.0~48.0)와 0.5°C 단위를 연결 전에 검증 — 잘못된 값이면 BLE 스캔·연결을 기다리지 않고 바로 실패
+		// 범위(28.0~45.0)와 0.5°C 단위를 연결 전에 검증 — 잘못된 값이면 BLE 스캔·연결을 기다리지 않고 바로 실패
 		if leftChanged {
 			if _, err := protocol.EncodeTemp(leftTemp); err != nil {
 				return withCode(codeInvalidArgument, fmt.Errorf("invalid --left: %w", err))
@@ -848,8 +848,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&deviceGid, "device-gid", "", "Device authentication key hex (or HOTWATERMAT_DEVICE_GID env)")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug output")
 
-	tempCmd.Flags().Float64Var(&leftTemp, "left", 0, "Left side target temperature (28.0-48.0)")
-	tempCmd.Flags().Float64Var(&rightTemp, "right", 0, "Right side target temperature (28.0-48.0)")
+	tempCmd.Flags().Float64Var(&leftTemp, "left", 0, "Left side target temperature (28.0-45.0)")
+	tempCmd.Flags().Float64Var(&rightTemp, "right", 0, "Right side target temperature (28.0-45.0)")
 	standbyCmd.Flags().BoolVar(&standbyL, "left", false, "Put the left side in standby")
 	standbyCmd.Flags().BoolVar(&standbyR, "right", false, "Put the right side in standby")
 

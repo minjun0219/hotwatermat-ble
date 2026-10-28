@@ -119,8 +119,9 @@ const (
 	// TempMin은 설정 가능한 최저 온도입니다 (28.0°C).
 	TempMin float64 = 28.0
 
-	// TempMax는 설정 가능한 최고 온도입니다 (48.0°C).
-	TempMax float64 = 48.0
+	// TempMax는 설정 가능한 최고 온도입니다 (45.0°C).
+	// 제조사가 안내하는 설정 범위(28-45°C)를 따릅니다. 46.0 이상을 매트가 어떻게 다루는지는 확인하지 않았습니다.
+	TempMax float64 = 45.0
 
 	// Pad는 패딩 바이트입니다 (0xFE).
 	// 패킷에서 사용하지 않는 바이트를 채울 때 사용합니다.
@@ -144,7 +145,7 @@ var ModeNames = map[byte]string{
 //   - 정수 온도 (예: 33.0°C): 그대로 바이트로 변환 → 33 (0x21)
 //   - 소수점 온도 (예: 33.5°C): temp + 127.5 = 161 (0xA1)
 //   - 0.5°C 단위만 허용 (33.3°C 같은 값은 오류)
-//   - 범위: 28.0°C ~ 48.0°C
+//   - 범위: 28.0°C ~ 45.0°C
 //
 // 주의: bit7(최상위 비트)은 난방 플래그가 아닙니다.
 // 단순히 0.5도 소수점 온도를 구분하기 위한 인코딩입니다.
@@ -155,7 +156,7 @@ var ModeNames = map[byte]string{
 //	28.5°C → 156 (0x9C) = 28.5 + 127.5
 //	33.0°C → 33 (0x21)
 //	33.5°C → 161 (0xA1) = 33.5 + 127.5
-//	48.0°C → 48 (0x30)
+//	45.0°C → 45 (0x2D)
 func EncodeTemp(temp float64) (byte, error) {
 	if temp < TempMin || temp > TempMax {
 		return 0, fmt.Errorf("temperature %.1f out of range [%.1f, %.1f]", temp, TempMin, TempMax)
@@ -182,7 +183,7 @@ func EncodeTemp(temp float64) (byte, error) {
 //   - 바이트 값 > 127: 소수점 온도 → byte - 127.5 (예: 161 → 33.5°C)
 //   - 바이트 값 ≤ 127: 정수 온도 → 그대로 (예: 33 → 33.0°C)
 //
-// EncodeTemp의 역함수입니다. EncodeTemp가 만들 수 있는 바이트(28.0~48.0°C)에 한해
+// EncodeTemp의 역함수입니다. EncodeTemp가 만들 수 있는 바이트(28.0~45.0°C)에 한해
 // EncodeTemp(DecodeTemp(b)) == b가 성립합니다. 범위 밖 바이트(예: 전원 OFF의 0)는
 // 디코딩은 되지만 다시 인코딩하면 오류입니다.
 func DecodeTemp(b byte) float64 {

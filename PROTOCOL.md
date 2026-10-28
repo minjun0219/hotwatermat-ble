@@ -77,9 +77,9 @@ def decode_temp(byte_val: int) -> float:
 | 33.5°C | 161 | 0xA1 |
 | 34.0°C | 34 | 0x22 |
 | 34.5°C | 162 | 0xA2 |
-| 48.0°C | 48 | 0x30 |
+| 45.0°C | 45 | 0x2D |
 
-**Range:** 28.0°C – 48.0°C in 0.5°C steps.
+**Range:** 28.0°C – 45.0°C in 0.5°C steps. This is the setting range the manufacturer documents. Earlier versions of the CLI accepted up to 48.0; no value above 45.0 was ever sent to a real mat, so how the mat treats one is unknown.
 
 ## Mode Values (byte[2])
 

@@ -7,7 +7,7 @@
   "rules": [
     "Drive the mat through the hotwatermat-ble CLI (status, temp --left/--right, standby --left/--right, on, off); add --verify to temp/standby/on/off to confirm the result.",
     "When a program reads the result, add --json: stdout is one JSON object. On failure the exit code is 1 and stdout is {\"code\",\"error\"}; retry only device_not_found or error.",
-    "Target temperatures must be 28.0-48.0°C in 0.5°C steps.",
+    "Target temperatures must be 28.0-45.0°C in 0.5°C steps.",
     "Run one command at a time: the mat accepts a single BLE connection, and the vendor app must be closed.",
     "setup is interactive: ask the user to run it. Otherwise set HOTWATERMAT_ADDRESS and HOTWATERMAT_DEVICE_GID, or pass --address and --device-gid.",
     "The DeviceGid is the mat's authentication key: never print it in full or commit it.",

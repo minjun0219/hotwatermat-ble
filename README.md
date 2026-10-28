@@ -121,7 +121,7 @@ hotwatermat-ble scan
 # 현재 상태 확인
 hotwatermat-ble status
 
-# 온도 설정 (28.0~48.0°C, 0.5°C 단위)
+# 온도 설정 (28.0~45.0°C, 0.5°C 단위)
 hotwatermat-ble temp --left 35 --right 35
 hotwatermat-ble temp --left 33.5        # 왼쪽만
 hotwatermat-ble temp --right 40         # 오른쪽만
@@ -231,7 +231,7 @@ BLE 프로토콜 전체 사양은 [PROTOCOL.md](PROTOCOL.md)를 참고하세요.
 - BLE 이름: `KDO_HotWaterMat`
 - 서비스 UUID: `00001c0d-d102-11e1-9b23-2ce2a80000dd`
 - 20바이트 고정 패킷 + 체크섬
-- 온도 범위: 28.0~48.0°C, 0.5°C 단위
+- 온도 범위: 28.0~45.0°C, 0.5°C 단위
 - 6바이트 DeviceGid 핸드쉐이크 기반 인증 (BLE 본딩 없음)
 - BLE 연결은 1개만 가능 (연결 시 매트가 광고 중단)
 

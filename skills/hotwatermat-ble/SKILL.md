@@ -1,6 +1,6 @@
 ---
 name: hotwatermat-ble
-description: Control a BLE hot water mat (온수매트, BLE name KDO_HotWaterMat, model EQM555) from the terminal with the hotwatermat-ble CLI — read its status (current and target temperature per side, mode, water level), set the left/right target temperature (28.0-48.0°C, 0.5°C steps), and power it on or off, with no vendor app, Wi-Fi or cloud. Use when the user asks to turn the mat (매트, 온수매트) on or off, warm it up or cool it down, check how warm it is or whether the water is low, or to script or schedule the mat; also when working with the Go packages in github.com/minjun0219/hotwatermat-ble.
+description: Control a BLE hot water mat (온수매트, BLE name KDO_HotWaterMat, model EQM555) from the terminal with the hotwatermat-ble CLI — read its status (current and target temperature per side, mode, water level), set the left/right target temperature (28.0-45.0°C, 0.5°C steps), and power it on or off, with no vendor app, Wi-Fi or cloud. Use when the user asks to turn the mat (매트, 온수매트) on or off, warm it up or cool it down, check how warm it is or whether the water is low, or to script or schedule the mat; also when working with the Go packages in github.com/minjun0219/hotwatermat-ble.
 license: MIT
 compatibility: macOS (amd64, arm64; CoreBluetooth) or Linux (amd64, arm64 release binaries; BlueZ over D-Bus) with a Bluetooth LE adapter in range of the mat. Windows only through WSL. Building from source needs Go 1.22+ (with cgo on macOS).
 ---
@@ -54,7 +54,7 @@ https://github.com/minjun0219/hotwatermat-ble/blob/main/PROTOCOL.md
   (the mat can ignore a command).
   Prefer it: the command lines only say the packet was sent (`Power ON sent.`,
   `Temperature set: left=35.0°C right=35.0°C`, `Standby set: right`), not that the mat accepted it.
-- Temperatures outside 28.0-48.0 or not in 0.5°C steps (`33.3`) are rejected before connecting,
+- Temperatures outside 28.0-45.0 or not in 0.5°C steps (`33.3`) are rejected before connecting,
   so round the user's request to the nearest 0.5.
 - `--debug` prints the BLE exchange; use it only when diagnosing a failure.
 

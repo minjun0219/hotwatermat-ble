@@ -637,8 +637,8 @@ func (c *Client) write(pkt []byte) error {
 //
 // 매개변수:
 //   - side: 제어할 면 (protocol.SideLeft, SideRight, SideBoth)
-//   - leftTemp: 왼쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
-//   - rightTemp: 오른쪽 목표 온도 (28.0~48.0°C, 0.5°C 단위)
+//   - leftTemp: 왼쪽 목표 온도 (28.0~45.0°C, 0.5°C 단위)
+//   - rightTemp: 오른쪽 목표 온도 (28.0~45.0°C, 0.5°C 단위)
 //
 // 내부 동작:
 //  1. GetStatus로 현재 온도(원시 바이트)와 대기 여부 획득 (3초 타임아웃)

@@ -720,3 +720,52 @@ func TestEncodeTempNaNInf(t *testing.T) {
 		}
 	}
 }
+
+// TestParseStatusError는 매트가 물 부족 에러(Er02)를 표시할 때 받은 STATUS로 에러 번호 위치를 고정합니다.
+//
+// 에러 중에는 byte[2]가 0x05이고 byte[10]에 에러 번호가 옵니다. 평소 STATUS는 ErrorCode가 0이어야 합니다.
+func TestParseStatusError(t *testing.T) {
+	tests := []struct {
+		name string
+		hex  string
+		code int
+		text string
+	}{
+		{"water low", "B2 00 05 06 00 00 1C 1B 23 00 02 FE FE FE FE 00 C0 13 05 37", 2, "Er02 (water_low)"},
+		{"normal", "B2 00 01 06 02 03 30 A5 19 23 A6 27 FE FE FE 00 C0 13 05 BC", 0, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pkt, err := hex.DecodeString(strings.ReplaceAll(tt.hex, " ", ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := ParseStatus(pkt)
+			if err != nil {
+				t.Fatalf("ParseStatus error: %v", err)
+			}
+			if st.ErrorCode != tt.code {
+				t.Errorf("ErrorCode = %d, want %d", st.ErrorCode, tt.code)
+			}
+			if tt.code == 0 {
+				return
+			}
+			if st.ModeName != "ERROR" {
+				t.Errorf("ModeName = %q, want ERROR", st.ModeName)
+			}
+			if st.PoweredOff || st.LeftStandby || st.RightStandby {
+				t.Errorf("PoweredOff/LeftStandby/RightStandby = %v/%v/%v, want all false", st.PoweredOff, st.LeftStandby, st.RightStandby)
+			}
+			if got := FormatError(st.ErrorCode); got != tt.text {
+				t.Errorf("FormatError = %q, want %q", got, tt.text)
+			}
+		})
+	}
+}
+
+// TestFormatErrorUnknown은 이름을 모르는 에러 번호를 원시 바이트로 보여 주는지 확인합니다.
+func TestFormatErrorUnknown(t *testing.T) {
+	if got := FormatError(0x0B); got != "0x0B" {
+		t.Errorf("FormatError(0x0B) = %q, want 0x0B", got)
+	}
+}

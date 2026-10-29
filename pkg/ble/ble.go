@@ -176,6 +176,10 @@ var (
 	// ErrPoweredOff는 전원이 꺼진 매트에 SetStandby를 요청했을 때 반환됩니다.
 	ErrPoweredOff = errors.New("the mat is powered off")
 
+	// ErrMatError는 매트가 에러(예: 물 부족)를 표시하는 중에 SetTemp나 SetStandby를 요청했을 때 반환됩니다.
+	// 에러 중에는 온도 칸을 믿을 수 없어 명령을 만들지 않습니다. 에러를 해결한 뒤 다시 시도합니다.
+	ErrMatError = errors.New("the mat is showing an error")
+
 	// ErrOtherSideStandby는 반대쪽이 이미 '운전 대기'인데 SetStandby를 요청했을 때 반환됩니다.
 	// 양쪽을 동시에 대기로 둘 수는 없습니다 (공식 앱도 막고, 양쪽을 끄려면 전원을 끕니다).
 	ErrOtherSideStandby = errors.New("the other side is already in standby")
@@ -647,11 +651,15 @@ func (c *Client) write(pkt []byte) error {
 //  3. STATUS로 반영을 확인하고, 반영되지 않았으면 한 번 더 전송 (sendHeatConfirm)
 //
 // 반영되지 않아도 오류로 끝내지 않습니다. 반영 여부는 호출하는 쪽이 STATUS로 확인합니다 (temp --verify).
+// 매트가 에러를 표시하는 중이면 아무것도 보내지 않고 ErrMatError를 반환합니다.
 func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 	// 현재 STATUS에서 현재 온도 원시 바이트를 가져옴
 	st, err := c.GetStatus(3 * time.Second)
 	if err != nil {
 		return fmt.Errorf("get current status: %w", err)
+	}
+	if err := matError(st); err != nil {
+		return err
 	}
 
 	// 목표 온도를 BLE 바이트로 인코딩
@@ -670,6 +678,14 @@ func (c *Client) SetTemp(side byte, leftTemp, rightTemp float64) error {
 		rightOK := side&protocol.SideRight == 0 || (!s.RightStandby && s.RightTarget == rightTemp)
 		return leftOK && rightOK
 	})
+}
+
+// matError는 st가 에러 상태면 ErrMatError를 감싼 오류를, 아니면 nil을 반환합니다.
+func matError(st *protocol.Status) error {
+	if st.ErrorCode == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s (resolve it on the mat first)", ErrMatError, protocol.FormatError(st.ErrorCode))
 }
 
 // sendHeatConfirm은 HEAT를 보낸 뒤 STATUS가 ok를 만족하기를 timeout 동안 기다립니다 (writeConfirm 참고).
@@ -726,6 +742,7 @@ func (c *Client) writePacket(label string, pkt [protocol.PacketSize]byte) error 
 //
 // 오류:
 //   - ErrPoweredOff: 전원이 꺼져 있음
+//   - ErrMatError: 매트가 에러를 표시하는 중
 //   - ErrOtherSideStandby: 반대쪽이 이미 대기임
 func (c *Client) SetStandby(side byte) error {
 	st, err := c.GetStatus(3 * time.Second)
@@ -734,6 +751,9 @@ func (c *Client) SetStandby(side byte) error {
 	}
 	if st.PoweredOff {
 		return fmt.Errorf("%w (power it on first)", ErrPoweredOff)
+	}
+	if err := matError(st); err != nil {
+		return err
 	}
 
 	var run byte

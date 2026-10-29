@@ -151,6 +151,11 @@ hotwatermat-ble temp --left 35 --right 35 --verify --json
 
 이때 `target`은 매트에 남아 있는 마지막 설정값입니다.
 
+매트가 에러를 표시하는 중이면(예: 물 부족) `status`는 `Mode:    ERROR`와 `Error:   Er02 (water_low)`만 보여 주고,
+`--json`은 `{"power":"on","mode":"ERROR","error":{"code":2,"name":"water_low"}}`처럼 온도 없이 나옵니다. 에러 중에는 온도·수위 칸이
+평소 배치가 아니기 때문입니다. 실기기에서 확인한 에러는 물 부족(번호 2)뿐이고, 다른 번호는 `name` 없이 `code`만 나옵니다.
+에러 중에 `temp`나 `standby`를 실행하면 아무것도 보내지 않고 `mat_error`로 실패합니다. 물 보충 등 매트에서 에러를 해결한 뒤 다시 실행하세요.
+
 `standby --left` 또는 `standby --right`는 그쪽을 '운전 대기'로 바꾸고, 반대쪽은 계속 운전합니다. 양쪽을 동시에 대기로 둘 수는 없어서, 반대쪽이 이미 대기면 `invalid_argument`로 실패합니다(양쪽을 끄려면 `off`). `temp`로 대기인 쪽의 온도를 정하면 그쪽을 깨워 다시 운전합니다. 지정하지 않은 쪽이 대기면 그대로 둡니다. 결과는 `--verify`로 확인하세요.
 
 실패하면 종료 코드는 1이고, stdout에 `{"code":"…","error":"…"}`가 출력됩니다. `code`로 실패 원인을 구분할 수 있습니다.
@@ -164,6 +169,7 @@ hotwatermat-ble temp --left 35 --right 35 --verify --json
 | `bluetooth_unavailable` | 블루투스가 꺼져 있거나 권한이 없음 |
 | `auth_failed` | DeviceGid가 이 매트와 맞지 않음 |
 | `not_configured` | DeviceGid가 없거나, 매트가 여러 대인데 `--address`가 없음 |
+| `mat_error` | 매트가 에러(예: 물 부족)를 표시하는 중이라 `temp`, `standby`를 보내지 않음. 매트에서 해결한 뒤 재시도 |
 | `invalid_argument` | 플래그나 값이 잘못됨 (온도 범위 등), 또는 `standby`를 할 수 없는 상태 (전원 꺼짐, 반대쪽이 이미 대기) |
 
 매트는 연결을 하나만 받고 연결 중에는 광고를 멈추므로, 다른 기기가 연결해 있는 경우와 범위 밖인 경우는 구분되지 않고 둘 다

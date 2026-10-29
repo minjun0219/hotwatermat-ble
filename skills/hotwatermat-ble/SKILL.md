@@ -1,6 +1,6 @@
 ---
 name: hotwatermat-ble
-description: Control a BLE hot water mat (온수매트, BLE name KDO_HotWaterMat, model EQM555) from the terminal with the hotwatermat-ble CLI — read its status (current and target temperature per side, mode, water level), set the left/right target temperature (28.0-45.0°C, 0.5°C steps), and power it on or off, with no vendor app, Wi-Fi or cloud. Use when the user asks to turn the mat (매트, 온수매트) on or off, warm it up or cool it down, check how warm it is or whether the water is low, or to script or schedule the mat; also when working with the Go packages in github.com/minjun0219/hotwatermat-ble.
+description: Control a BLE hot water mat (온수매트, BLE name KDO_HotWaterMat, model EQM555) from the terminal with the hotwatermat-ble CLI — read its status (current and target temperature per side, mode, water level, error such as low water), set the left/right target temperature (28.0-45.0°C, 0.5°C steps), and power it on or off, with no vendor app, Wi-Fi or cloud. Use when the user asks to turn the mat (매트, 온수매트) on or off, warm it up or cool it down, check how warm it is or whether the water is low, or to script or schedule the mat; also when working with the Go packages in github.com/minjun0219/hotwatermat-ble.
 license: MIT
 compatibility: macOS (amd64, arm64; CoreBluetooth) or Linux (amd64, arm64 release binaries; BlueZ over D-Bus) with a Bluetooth LE adapter in range of the mat. Windows only through WSL. Building from source needs Go 1.22+ (with cgo on macOS).
 ---
@@ -84,7 +84,11 @@ Right:   30.0°C → 35.0°C
   is off.
 - `temp` on a side in standby wakes it and sets the requested value. A standby side you did not
   specify stays in standby. Use `--verify` to confirm.
-- `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `POWER`, `FASTHEAT`, `IONCARE`.
+- `Mode` is one of `HEAT`, `TIMER_OFF`, `SLEEP`, `ERROR`, `POWER`, `FASTHEAT`, `IONCARE`.
+- While the mat shows an error, `status` prints only `Mode:    ERROR` and a line such as
+  `Error:   Er02 (water_low)` (no temperatures: those bytes are not laid out as usual then). Er02 means
+  the water is low: tell the user to refill. Only Er02 has been seen on a real mat; other errors print
+  the raw code (`Error:   0x0B`). `temp` and `standby` send nothing and fail with `mat_error`.
 - `Water` is `LOW` (tell the user to refill), `OK` or `FULL`.
 - Progress lines (`Using cached address: ...`, `Found device: ...`) and `--debug` output go to
   stderr; parse stdout only.
@@ -98,6 +102,7 @@ then holds exactly one JSON object; progress lines still go to stderr.
 | Command | Stdout |
 |---|---|
 | `status --json` (mat off) | `{"power":"off"}` |
+| `status --json` (mat showing an error) | `{"power":"on","mode":"ERROR","error":{"code":2,"name":"water_low"}}` (`name` only for known codes) |
 | `status --json` (mat on) | `{"power":"on","mode":"HEAT","side":"both","water":"OK","left":{"current":31.5,"target":35},"right":{"current":30,"target":35}}` |
 | `temp --left 35 --right 35 --json` | `{"sent":"temp","left":35,"right":35}` |
 | `standby --right --json` | `{"sent":"standby","side":"right"}` |
@@ -117,6 +122,7 @@ exit code is 1 and stdout is `{"code":"…","error":"…"}`, where `code` is one
 | `bluetooth_unavailable` | Bluetooth is off or permission is denied | Ask the user |
 | `auth_failed` | The DeviceGid does not match this mat | Ask the user to re-run `setup` |
 | `not_configured` | No DeviceGid, or several mats and no `--address` | Ask the user |
+| `mat_error` | `temp` / `standby`: the mat is showing an error (e.g. water low), so nothing was sent | Tell the user to resolve it on the mat (e.g. refill), then retry |
 | `invalid_argument` | Bad flag or value (e.g. a temperature out of range), or `standby` cannot run (mat off, other side already in standby) | Fix the call, or tell the user |
 
 A mat that is busy with another connection looks the same as one out of range: both are

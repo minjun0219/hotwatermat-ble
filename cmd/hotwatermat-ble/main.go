@@ -550,6 +550,12 @@ func printStatus(st *protocol.Status) {
 		fmt.Println("Power: OFF")
 		return
 	}
+	if st.ErrorCode != 0 {
+		// 에러 중에는 온도·수위 칸이 평소 배치가 아니라서 출력하지 않음
+		fmt.Printf("Mode:    %s\n", st.ModeName)
+		fmt.Printf("Error:   %s\n", protocol.FormatError(st.ErrorCode))
+		return
+	}
 	fmt.Printf("Mode:    %s\n", st.ModeName)
 	fmt.Printf("Side:    %s\n", protocol.SideName(st.Side))
 	fmt.Printf("Water:   %s\n", protocol.WaterLevelName(st.WaterLevel))

@@ -90,6 +90,10 @@ const (
 	// ModeSleep은 취침 모드입니다 (0x03). 수면에 적합한 온도로 자동 조절됩니다.
 	ModeSleep byte = 0x03
 
+	// ModeError는 매트가 에러를 표시하는 중일 때 STATUS에 오는 값입니다 (0x05, 실기기 확인).
+	// 이때 byte[10]에 에러 번호가 오고(물 부족 Er02 → 0x02), 온도 칸은 평소 배치가 아닙니다.
+	ModeError byte = 0x05
+
 	// ModePower는 전원 제어 모드입니다 (0x06). 전원 ON/OFF 명령에 사용됩니다.
 	// byte[6]이 0x2B이면 ON, 0xAB이면 OFF입니다.
 	ModePower byte = 0x06
@@ -134,6 +138,7 @@ var ModeNames = map[byte]string{
 	ModeHeat:     "HEAT",
 	ModeTimerOff: "TIMER_OFF",
 	ModeSleep:    "SLEEP",
+	ModeError:    "ERROR",
 	ModePower:    "POWER",
 	ModeFastheat: "FASTHEAT",
 	ModeIoncare:  "IONCARE",
@@ -498,6 +503,10 @@ type Status struct {
 	// 대기 중에도 RightTarget에는 마지막 설정값이 남아 있으므로, 대기 여부는 이 값으로 확인해야 합니다.
 	RightStandby bool
 
+	// ErrorCode는 매트가 표시 중인 에러 번호입니다 (Mode가 ModeError일 때 byte[10], 아니면 0).
+	// 0이 아니면 온도, 대기, 수위 값은 믿을 수 없습니다. 이름은 ErrorName으로 얻습니다.
+	ErrorCode int
+
 	// PoweredOff는 매트의 전원이 꺼져 있는지 여부입니다.
 	// Mode가 POWER이고 목표 온도가 양쪽 모두 0이면 전원이 꺼진 것으로 판단합니다.
 	PoweredOff bool
@@ -567,6 +576,12 @@ func ParseStatus(data []byte) (*Status, error) {
 	var raw [PacketSize]byte
 	copy(raw[:], data[:PacketSize])
 
+	// 에러 중에는 byte[10]이 에러 번호라 목표 온도가 아닙니다
+	errorCode := 0
+	if mode == ModeError {
+		errorCode = int(data[10])
+	}
+
 	return &Status{
 		Mode:            mode,
 		ModeName:        modeName,
@@ -585,6 +600,7 @@ func ParseStatus(data []byte) (*Status, error) {
 		Raw:             raw,
 		LeftStandby:     !poweredOff && data[5] == RunRightOnly,
 		RightStandby:    !poweredOff && data[5] == RunLeftOnly,
+		ErrorCode:       errorCode,
 		PoweredOff:      poweredOff,
 	}, nil
 }
@@ -709,4 +725,26 @@ func WaterLevelName(wlv int) string {
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", wlv)
 	}
+}
+
+// ErrorName은 STATUS의 에러 번호를 짧은 이름으로 바꿉니다 (예: 2 → "water_low").
+//
+// 실기기에서 본 것은 물 부족(0x02)뿐입니다. 다른 번호가 어떤 값으로 오는지는 확인하지 않아서
+// 이름을 붙이지 않고 빈 문자열을 반환합니다.
+func ErrorName(code int) string {
+	switch code {
+	case 0x02:
+		return "water_low"
+	default:
+		return ""
+	}
+}
+
+// FormatError는 에러 번호를 사람이 읽을 형태로 바꿉니다 (예: 2 → "Er02 (water_low)").
+// 이름을 모르는 번호는 원시 바이트를 그대로 보여 줍니다 (예: "0x0B").
+func FormatError(code int) string {
+	if name := ErrorName(code); name != "" {
+		return fmt.Sprintf("Er%02d (%s)", code, name)
+	}
+	return fmt.Sprintf("0x%02X", code)
 }

@@ -88,6 +88,7 @@ def decode_temp(byte_val: int) -> float:
 | 0x01 | HEAT | Normal heating |
 | 0x02 | TIMER_OFF | Timer-off mode |
 | 0x03 | SLEEP | Sleep mode |
+| 0x05 | ERROR | STATUS only: the mat is showing an error (see Error state) |
 | 0x06 | POWER | Power ON/OFF control |
 | 0x07 | FASTHEAT | Fast heating |
 | 0x08 | IONCARE | Ion care mode |
@@ -196,6 +197,25 @@ B2 00 [mode] [side] [vol/water] [field5] [field6] [L_cur] [R_cur] [field9] [L_tg
 
 - Temperature bytes use the same 0.5°C encoding
 - `mode=0x06` + `L_tgt=0` + `R_tgt=0` → power OFF state
+- `mode=0x05` → the mat is showing an error, see Error state below
+
+### Error state (observed 2026-10-29)
+
+While the official app showed the low-water error (Er02), STATUS was:
+
+```
+B2 00 05 06 00 00 1C 1B 23 00 02 FE FE FE FE 00 C0 13 05 37
+```
+
+Compared with a normal STATUS (`B2 00 01 06 02 03 AD 26 A4 23 A6 A4 FE FE FE 00 C0 13 05 C2`):
+
+- `[2]=05` instead of `01`
+- `[10]=02`, read as the error number (Er02). Only this one error has been seen, so whether other numbers come as decimal or hex digits (Er11 as `0x0B` or `0x11`) is unknown
+- `[4]=00` (water level nibble 0), `[5]=00`, `[9]=00`, `[11]=FE`
+- `[12..18]` are the same as usual, so the error is not carried there
+- The temperature bytes are not in their usual places: the bytes after `[5]` look shifted (`23`, normally at `[9]`, is at `[8]`). Which bytes hold the current temperatures is not known
+
+`ParseStatus` sets `ErrorCode` from `[10]` when `[2]=05`. The CLI then shows only the mode and the error, and `temp` / `standby` send nothing (`mat_error`). Power commands are not blocked; how the mat treats them during an error is not known.
 
 ### Live capture check (2026-10)
 

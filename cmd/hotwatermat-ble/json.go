@@ -19,6 +19,7 @@ const (
 	codeAuthFailed           = "auth_failed"           // 인증 응답 없음 (DeviceGid가 다름) → setup 다시
 	codeVerifyFailed         = "verify_failed"         // 명령은 보냈지만 --verify의 상태 확인에 실패
 	codeNotApplied           = "not_applied"           // 명령은 보냈지만 매트가 반영하지 않음 (예: '운전 대기'인 쪽) → 앱으로 확인
+	codeMatError             = "mat_error"             // 매트가 에러(예: 물 부족)를 표시하는 중이라 명령을 보내지 않음 → 매트에서 해결 후 재시도
 	codeError                = "error"                 // 그 밖의 실패 (연결 끊김, 쓰기 실패, 상태 수신 실패 등)
 )
 
@@ -48,6 +49,8 @@ func errorCode(err error) string {
 		return codeDeviceNotFound
 	case errors.Is(err, ble.ErrAuthTimeout):
 		return codeAuthFailed
+	case errors.Is(err, ble.ErrMatError):
+		return codeMatError
 	default:
 		return codeError
 	}
@@ -59,14 +62,22 @@ type errorJSON struct {
 	Error string `json:"error"`
 }
 
-// statusJSON은 --json으로 출력하는 매트 상태입니다. 전원이 꺼져 있으면 power만 채웁니다.
+// statusJSON은 --json으로 출력하는 매트 상태입니다. 전원이 꺼져 있으면 power만 채우고,
+// 매트가 에러를 표시하는 중이면 power, mode, error만 채웁니다 (그때 온도·수위 칸은 믿을 수 없음).
 type statusJSON struct {
-	Power string    `json:"power"`           // "on" 또는 "off"
-	Mode  string    `json:"mode,omitempty"`  // HEAT, TIMER_OFF, SLEEP, POWER, FASTHEAT, IONCARE
-	Side  string    `json:"side,omitempty"`  // left, right, both
-	Water string    `json:"water,omitempty"` // LOW, OK, FULL
-	Left  *sideJSON `json:"left,omitempty"`
-	Right *sideJSON `json:"right,omitempty"`
+	Power string     `json:"power"`           // "on" 또는 "off"
+	Mode  string     `json:"mode,omitempty"`  // HEAT, TIMER_OFF, SLEEP, ERROR, POWER, FASTHEAT, IONCARE
+	Error *errorInfo `json:"error,omitempty"` // 매트가 표시 중인 에러
+	Side  string     `json:"side,omitempty"`  // left, right, both
+	Water string     `json:"water,omitempty"` // LOW, OK, FULL
+	Left  *sideJSON  `json:"left,omitempty"`
+	Right *sideJSON  `json:"right,omitempty"`
+}
+
+// errorInfo는 매트가 표시 중인 에러입니다. name은 아는 번호에만 붙습니다 (지금은 2 → "water_low").
+type errorInfo struct {
+	Code int    `json:"code"`
+	Name string `json:"name,omitempty"`
 }
 
 // sideJSON은 한쪽 매트의 현재 온도와 목표 온도(°C)입니다.
@@ -102,6 +113,13 @@ type deviceJSON struct {
 func newStatusJSON(st *protocol.Status) *statusJSON {
 	if st.PoweredOff {
 		return &statusJSON{Power: "off"}
+	}
+	if st.ErrorCode != 0 {
+		return &statusJSON{
+			Power: "on",
+			Mode:  st.ModeName,
+			Error: &errorInfo{Code: st.ErrorCode, Name: protocol.ErrorName(st.ErrorCode)},
+		}
 	}
 	return &statusJSON{
 		Power: "on",
